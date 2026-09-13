@@ -87,7 +87,7 @@
     {
       "path": "mods/scp_modern-1.20-1.2-pre-beta-b.jar",
       "size": 7733765,
-      "source": {"provider": "curseforge", "file_id": 8080584, "file_name": "scp_modern-1.20-1.2-pre-beta-b.jar"}
+      "source": {"provider": "modrinth", "project": "AMhZWdF0", "version_id": "tIVGkxar", "file_name": "scp_modern-1.20-1.2-pre-beta-b.jar"}
     },
     {
       "path": "mods/geckolib-forge-1.20.1-4.8.4.jar",
