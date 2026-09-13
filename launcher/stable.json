@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "channel": "stable",
+  "version": "0.1.8",
+  "status": "staging",
+  "download_url": "",
+  "sha256": "",
+  "notes": "Reserved public launcher update metadata. Client payload updates do not require a launcher rebuild."
+}
