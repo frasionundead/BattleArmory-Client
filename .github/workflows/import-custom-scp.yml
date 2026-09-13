@@ -1,0 +1,46 @@
+name: Import custom SCP payload
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/import-custom-scp.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download canonical custom SCP jar
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://uc5fbaf2aaf9fba81debad25d6bd.dl.dropboxusercontent.com/cd/0/get/DIG6x1Tqw--8rRO1gzvQ-Rg9qxYa_Zjw9eF7aYdTT--QyuAViK7CJbzM7WTEQhv_sgb055g4z8EUJev1-BKWkcNyyBKv3K-A3xZVzhaUuPXhMgaMyorD4mQ3XgVxCMcJ2FTIWKS9NHCyxs4m-AOlS2GZeSttsCDwO7QgiqU1t77cXw/file?c_luid=44ddf4f6'
+          curl -fL --retry 2 --retry-delay 1 "$url" -o /tmp/scp-custom.jar
+          size=$(stat -c%s /tmp/scp-custom.jar)
+          test "$size" = '7733765'
+          sha=$(sha256sum /tmp/scp-custom.jar | awk '{print $1}')
+          echo "CUSTOM_SCP_SIZE=$size"
+          echo "CUSTOM_SCP_SHA256=$sha"
+          mkdir -p payload/mods
+          cp /tmp/scp-custom.jar payload/mods/scp_modern-1.20-1.2-pre-beta-b.jar
+          printf '%s  %s\n' "$sha" 'scp_modern-1.20-1.2-pre-beta-b.jar' > payload/mods/scp_modern-1.20-1.2-pre-beta-b.jar.sha256
+
+      - name: Commit canonical custom payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add payload/mods/scp_modern-1.20-1.2-pre-beta-b.jar payload/mods/scp_modern-1.20-1.2-pre-beta-b.jar.sha256
+          if git diff --cached --quiet; then
+            echo 'Payload already current.'
+            exit 0
+          fi
+          git commit -m 'Publish canonical custom SCP Modern payload'
+          git push
