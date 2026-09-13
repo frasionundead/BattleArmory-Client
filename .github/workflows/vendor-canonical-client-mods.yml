@@ -1,0 +1,119 @@
+name: Vendor canonical Battle Armory client mods
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/vendor-canonical-client-mods.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download exact canonical JARs from Battle Armory Dropbox
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p payload/mods .vendor
+          cat > .vendor/mods.tsv <<'EOF'
+          customchestmenus-forge-1.20.1-1.7.0.jar	128821	https://uc79ce981b012d5a9c7559aa73b4.dl.dropboxusercontent.com/cd/0/get/DIHqKWvIvh5ACALdxHQ4z8Jiyug04jRgdXbZ3LvGlbwSMwa4dDC6fiDKlJ-lT_n7aVgzzfO28jcYEjgAFZBmE4Svkk-tglVXtI4xIe8B5viHMuTfn3zpi4nwVsUfo8zgVvYOBcRnxZAd3U44NVPt46j19iHlcD2ljY_rcAwvlYGnMA/file?c_luid=44ddf4f6
+          supplementaries-1.20-3.1.43-forge.jar	13667742	https://uc6e15fde1ce1751280166af2b7c.dl.dropboxusercontent.com/cd/0/get/DIHE4VRx44gm0VD7Wc3gJFofYS_oBLIs3e8nzsDmT4cWgECZ0X3hLszknMSn3nu4uabIrLiFJJFHN6zmpMSMlCh6TGV9Ttl33xNeTppbKTz_aOmtLKe1Fldcc_IYZtUt9deUVsDXTIiWZw-nIzDxAhB96ih4QWNfvcBwVEU8K81KhA/file?c_luid=44ddf4f6
+          moonlight-1.20-2.16.34-forge.jar	1419416	https://uc535d90b7ba1a8c0af50ba3ddba.dl.dropboxusercontent.com/cd/0/get/DIFYXKiOuFYPrso2iHJLhRCREmIPMlZFtSY_NZc8F0iuK29lH9gZq47XcevB4cMRC1rt4OI_MChGd9xSeTPOamsxeC6ygMDahsWiYPwPr7AunMT90VuRW4BzeN_hNNSo63kjTYJIPZpkwqVk5rQ4-ZTwyAxzeBVqWSqhsFqBW-i06A/file?c_luid=44ddf4f6
+          amendments-1.20-2.2.6.jar	1315525	https://uc3ed28791294d7aeed4f1deab79.dl.dropboxusercontent.com/cd/0/get/DIFmYkwgpCXSFxfOCJhuG0v3ZlODVqzILKr5z2P0DGwFV8OjpKdepFly4cWLV1SPWBU-QOgA_WzHj0BNNp_s2Fv4h6MRMehPAdYhVtm-g3rR8AOMN1ko2jzzqHnfmumdYqfWt_rwZYrOba38a86nj8MChiB1DJMhQHXe69jBBWp26g/file?c_luid=44ddf4f6
+          decocraft-3.0.4-1.20.1-slim.jar	94319937	https://uc52e09977ffe34e0a214284f435.dl.dropboxusercontent.com/cd/0/get/DIH7G0xvKshdbRfJgthK3Cn4PE5AUtO_ECQPS4zQG1IeekJhedutYk9z5EKlQ-ivVDbVBkfhxXpLnrdcMsa7l0AWdmleoZkyyjIzLFiDuxLqtGhCiVx4MOTRqii7LwVGIJ29xqob0bcI3mynlCQcrRrFJsQakpmCmYpeXrSQrdKzZg/file?c_luid=44ddf4f6
+          decocraft_nature-1.0.4-1.20.1.jar	18130638	https://uc579a415d85dd95eba3e97e9e19.dl.dropboxusercontent.com/cd/0/get/DIFdjPC4t0LTHqdJtm2FxScWtmiLzjMbPnbUHb5ymFydmkTatQWWWIIiTx47Tz3n_itGbrpD2rMMEWI8yZFBzUyxeOTJfksYbebA3-VoDXneNe0E0s_N04GH1oyqpPRhdzeDkzIaVB09iYWnUauOCuk_UMBY-Qj4DuwSlae_dsVIyw/file?c_luid=44ddf4f6
+          CreativeCore_FORGE_v2.12.39_mc1.20.1.jar	1144128	https://uc8c7273f24bf22684141e9c53a3.dl.dropboxusercontent.com/cd/0/get/DIGBB3PLkdaFL8o1JufhUCQBJok4UUNpPJm1S2xhccGs6ZdY9YXfF5-XXaXTeB4MwW3sXPCbPxoE4JelEHwGB6z45fS0oexmF5MHrRm5zfGenhxnaicD7zBSLWjTeA4Ed_Jt6gZ3yn0nMBiRTcpX84mZRYzVt7vWLrOan775M9KQbQ/file?c_luid=44ddf4f6
+          decorative_blocks-forge-1.20.1-4.1.3.jar	573928	https://uc12380490570fc5db78575f104b.dl.dropboxusercontent.com/cd/0/get/DIE6A7Ne9GXbZJbodnrEMIo6ON9MK-P-2Cpb6-T5jclaxFnGDlaNzP59-dte58XabYbhAvoU3qMNh5-a5jQ4eLAdgRc5tlDaNXU999r0zMaIObN4fjhc5swvxBQGUXStacHe7IWpSyzBajPu0c7BIpXgUbUrpSq4DBemCYFpLSN8Cw/file?c_luid=44ddf4f6
+          athena-forge-1.20.1-3.1.2.jar	91808	https://ucc10a1d0001b35638e582ed50bd.dl.dropboxusercontent.com/cd/0/get/DIGJVhKZ_CgVc_6kvffuHqQAK4aSNytXAcD6xrJsdd8xDfb-Y2C_8YsWOQuzI7zf519G0-erL9JD_97rc-WGIdd4Dmzl0ca4ZyM90RYsNriICXHsPDJ6idXF1gAjc1DNe7fta8e9k8dms04B-ITvjY3Myw_q9koMGIahVApOzyjtlA/file?c_luid=44ddf4f6
+          mdm-26.9-forge-1.20.1.jar	2724644	https://uc4cdb2b3782445ff23bbf14b238.dl.dropboxusercontent.com/cd/0/get/DIHP3hf0XmgwDd0k4c_TzL08ipkTNU1BZrQn-JrazOcwoxjFskpo5nGUrtTdm_ypTOr1P6ZYIFKlvH4GE8JWgfy7Ot4l8U35wL2tJCvEX4GS8F-YJvv2y83FUBKCVUiOxLaWPpphaIbCE1NMwWFuVR1IawAs1uweg0c_QXDpTPzeRg/file?c_luid=44ddf4f6
+          props_mod-1.4.1-forge-1.20.1.jar	682563	https://uc5a4f75372bb1d446fedd4c5898.dl.dropboxusercontent.com/cd/0/get/DIEXf2Yf4e3yy2D7PolgS21AMz5snPII79OtLlJUrpNhz3TF5KfzZ7y_Q-uC7jNuBXqCEORn53DNHA61iHm_bBT2CrRGMD29IERev3WeCyqf-vrMBN1wE-gsZs6LbKgKzmDTanAlkK8WrbVFgfX49SJU3q-Tp1XALZLDXwaUHvikaw/file?c_luid=44ddf4f6
+          another_furniture-forge-1.20.1-3.0.4.jar	2463633	https://ucfc79d219d3ce5f0584d9c3d4f6.dl.dropboxusercontent.com/cd/0/get/DIF9g8oY7c_K81b_n8hDRun9WbiprisQwO83xVH_b8YJK1dPIHGWBjk5GqPPlZy6jB8e-YU-Du-uNiA8olqde96_wSRUxKN6bw78fCvhErfBgZcPmjZ3_5jtXdXS3CHwNy5xMbdcWXTqpmDa900Isf289KrBAXQc_NskatrtqvVOzA/file?c_luid=44ddf4f6
+          chipped-forge-1.20.1-3.0.7.jar	15060263	https://ucf2d60f4eca910ea24c79c30929.dl.dropboxusercontent.com/cd/0/get/DIFt3Jn-ra7JvGTDdtJi0WwJZgrl9hAKft3gBWl16uNgIFldRUqso5HH1hxhmL1bjcyUfJ6KGNqOy8c7sXhJhR4b9UmI8DWr_xDLLr3JwVF4lgaXHGcFMLJ-W4MLYlWPjK2QZJHVy80Ta8iMiFCrNvH6xipAiPHZT_lsALKdTGR7CQ/file?c_luid=44ddf4f6
+          handcrafted-forge-1.20.1-3.0.6.jar	7111059	https://ucff72a66b5cc647cfc3a89740b1.dl.dropboxusercontent.com/cd/0/get/DIEOdfUzigY0NitI2NRl_mXukHwGrRhgkY7XxwBB6kkYY6qmRQy3MC_GbU1kQ8ylm9nPSkel2BSnR1X5Y7_02oU68aljRQo3nYM9v8CwVBHMH9rI3Ak4Y_m13baUZqOMpZCUCJ0N2prmza40SVM14YL5oAMO8BloxPWp4cZHR8iJwA/file?c_luid=44ddf4f6
+          resourcefullib-forge-1.20.1-2.1.29.jar	432753	https://uc43455febb9dfb1b9b6b3d514b6.dl.dropboxusercontent.com/cd/0/get/DIHXCH5j1D3AKH8rTTyk3tGRK28MA4tBgaqZkMOKsjHVbgm5NheqwN1hDp5sVlut52jgBFCI68_uIx8hpq5SN6ppHxvg0zjhegD4_MqUiTssb_dChwCYhVxb9sSSzGdZ2GpXfBrZYRsQc44A3JIbEcikjtR5JlNwJStun5Fh0BLcTA/file?c_luid=44ddf4f6
+          scp_modern-1.20-1.2-pre-beta-b.jar	7733765	https://uc8f621622fd728f11dad588b30f.dl.dropboxusercontent.com/cd/0/get/DIHwiJdjuTu0_4gTWzbsfcmmI-364Wu0CXW8dgJtG6w7-KWOZZzwOSx79yBTjUN9ZXBCiYAZhPJfFybEarMyWOa3ZmlTmj5torZ7RdM4b4i4DID4WOlCqDOfm1tW7E7bAaD8KqndhxyPwoldPuOuNf5uyXUMqzh6PD0ggOle29Sf1w/file?c_luid=44ddf4f6
+          geckolib-forge-1.20.1-4.8.4.jar	1038209	https://uc8bf3c15d04dd061271729fa1a5.dl.dropboxusercontent.com/cd/0/get/DIHIabm81Dm8z910obTqZ0sVV9Euw1YU3YZoLSzvb0Pfxbfs9tMVgZ6E4nWo0xAIALzZSYchRS1ZeeHyFvqVgYabQBfUzRNXHd-dBRN7yjhpKxszKBjcHNgkmRUNeJy8EJM9vK8YO7Ol5SmDHk8HF_Tp0P0ONLM2VxOonFanDcg6yw/file?c_luid=44ddf4f6
+          LittleTiles_BETA_v1.6.0-pre161_mc1.20.1.jar	2623590	https://ucffd2d059cee9a239f4ad5f9a19.dl.dropboxusercontent.com/cd/0/get/DIEWy81oR_RUnafRnHQxpIVyx1zD535SeU_YpCnKDlcRa5pKv_2C1crkJiDeWEYS6MWTsXg_0nhG3TvGeTTfRQfhduOePLzE9hVKXMIsNrf59z-5ssGcVT-NegFOw2_HkS0XRmlmZt3w_NUfcgJFGSqKQU_lAhQ5PnUD4kE3TDo7zQ/file?c_luid=44ddf4f6
+          FramedBlocks-9.4.3.jar	4251314	https://ucf56952ccb7c207260101fb6bc6.dl.dropboxusercontent.com/cd/0/get/DIFaKF72kMQXJ57pPQIUi4ovc7ETCuJSaNgHY3zOiC4dVmIf7xFv1qb3A4u642vQlxt_Jgtv6b2AuxtnrXnvFWjgznqt_rzlrGqGzisFwm--7UwONLOj2RtkvCAJy_lvPQV7Ani5qE6iMM5Af61JMr1gAqpRcA8Vhh9cAJEyxb-rnA/file?c_luid=44ddf4f6
+          GamingDeco+1.8.3+Forge+1.20.1..jar	5834791	https://uc4bc1498e8e85f173c414d6dad9.dl.dropboxusercontent.com/cd/0/get/DIEvyTWU9HpRjir8FfZOBHFkTAvQiBxyRHhqXViHWrb74t6OjX9L6uL_iVFl128ncWfxuPtFvdZYl1HKLH5SLkHhbMrURHYX8SGfcVd3WMOQUXhinObTgPLkKlB2IbKY6ncQAVa7B7qKVBxOyPk2qcZwMYhQRiFPQJorNZ8zdaTSIA/file?c_luid=44ddf4f6
+          paladin-furniture-mod-1.5.0-forge-mc1.20.1.jar	6226086	https://ucfc70d817d8258f8c18085a5f8b.dl.dropboxusercontent.com/cd/0/get/DIG3kMKEEFPGq9KT8-kejbEwM189tTim7CgPSldBPcK05v_SISfdTVTx7a-tklrepH7Q6paURQ9xke77jXnVEawAS7CZJ0fAvG7G4nqO-hrnA2JZ9fR6HiKNcNvcvs0AUKPtKF8TwB3QqleQ434WRqn8VLFTKITuHNGVaaPKN3Wa6A/file?c_luid=44ddf4f6
+          mcw-mcwfences-1.2.1-mc1.20.1forge.jar	708634	https://uc2fab014ac936da8f42b1a411a3.dl.dropboxusercontent.com/cd/0/get/DIFMUYpCmtY00IlVFt6ktL7F3zKLZG9VrDOGhvLsXRHUHHsJ4apKmkVpPG7mpJ9gp5ZqNu2CAGK_meGuV5-oT5Hh6C5tSEPqQCmq2gTH955lf2xRqPg3ULXHHiiSpZeD3yl093DGtGyVXG5RRPiFG67HLUFxQtBrXjGl5tajU6Z8Kg/file?c_luid=44ddf4f6
+          just_barricades-1.0.0.jar	45092	https://ucccabd5552b3fe4b9109886a26f.dl.dropboxusercontent.com/cd/0/get/DIG0_olmM6Bevjt9nZnssmkzC8PnkPwxrBnBsX3vXTCz5jQYfNirGUYzSwrYPIIXVIi1IS5GB5HJ-sZ2iDvTg2q0pIG3zhDmjOoWRiniwWQQFFr1nLSSo7plWvBSQVu2Pnp06jMmxtsqazoAexj5w4eXtxdTD7jyJTKy2wl0tcWpKQ/file?c_luid=44ddf4f6
+          the_last_day-0.8.jar	98119943	https://uc0eec1fb24ac9434bfdaf7fefe4.dl.dropboxusercontent.com/cd/0/get/DIHzJTg9HfsSJUFvmfmUxYACSj9DfyIUy3_a4P9oGf9zqsjAut4pncPIy-vbOp8pGbGfOOxtAe7viBssmGLoIFK7fMVzXm7Uc99vOIlGAK-TnjXG3ZvA46gOle6bQaq3TUPhwFf-bmJTwmZLJ1yLI71MuBl2SeyCTqxVk-OpYqwl1w/file?c_luid=44ddf4f6
+          EOF
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          : > .vendor/index.tsv
+
+          while IFS=$'\t' read -r name expected_size url; do
+            [ -n "$name" ] || continue
+            tmp=".vendor/$name.part"
+            dest="payload/mods/$name"
+            echo "Vendoring $name"
+            curl -fL --retry 2 --retry-delay 1 "$url" -o "$tmp"
+            actual_size=$(stat -c%s "$tmp")
+            if [ "$actual_size" != "$expected_size" ]; then
+              echo "SIZE MISMATCH for $name: expected $expected_size got $actual_size" >&2
+              exit 1
+            fi
+            actual_sha=$(sha256sum "$tmp" | awk '{print $1}')
+            mv "$tmp" "$dest"
+            printf '%s\t%s\t%s\n' "$name" "$actual_size" "$actual_sha" >> .vendor/index.tsv
+            git add -- "$dest"
+            if ! git diff --cached --quiet; then
+              git commit -m "Vendor canonical client mod: $name"
+              git push origin HEAD:main
+            fi
+          done < .vendor/mods.tsv
+
+      - name: Pin manifest to Battle Armory payload URLs and exact SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          index = {}
+          for line in Path('.vendor/index.tsv').read_text(encoding='utf-8').splitlines():
+              if not line.strip():
+                  continue
+              name, size, sha = line.split('\t')
+              index[name] = {'size': int(size), 'sha256': sha}
+
+          manifest_path = Path('builds/0003.json')
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          missing = []
+          for item in manifest['files']:
+              if not item['path'].startswith('mods/'):
+                  continue
+              name = item['path'].split('/', 1)[1]
+              meta = index.get(name)
+              if meta is None:
+                  missing.append(name)
+                  continue
+              item.pop('source', None)
+              item['url'] = f'https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/{name}'
+              item['size'] = meta['size']
+              item['sha256'] = meta['sha256']
+
+          if missing:
+              raise SystemExit('Manifest mods missing from canonical import: ' + ', '.join(missing))
+
+          manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          Path('payload/mods/index.json').write_text(
+              json.dumps(index, ensure_ascii=False, indent=2, sort_keys=True) + '\n',
+              encoding='utf-8')
+          PY
+
+          git add builds/0003.json payload/mods/index.json
+          git commit -m 'Pin all client mods to canonical Battle Armory payload'
+          git push origin HEAD:main
