@@ -1,0 +1,34 @@
+{
+  "base_sha256": "09b061db2f61129eccc670bf3f5b7b8030e5e8d5be9d056967fdce5b3f634a4b",
+  "base_size": 7763880,
+  "base_url": "https://cdn.modrinth.com/data/AMhZWdF0/versions/tIVGkxar/scp_modern-1.20-1.2-pre-beta-b.jar",
+  "custom_archive_sha256": "a0e65a41164263d31c1454edbbf25afa0703eed28a9faced1d338ed42ca42fa8",
+  "custom_archive_size": 7733765,
+  "kind": "zip-overlay",
+  "remove": [
+    "data/scp_modern/structures/a1_alea.nbt",
+    "data/scp_modern/worldgen/structure/scp_installation.json",
+    "data/scp_modern/worldgen/structure_set/scp_installation.json"
+  ],
+  "replace": [
+    {"data_file":"files/00.b64","path":"com/scporganization/scp_modern/blink/BlinkEventHandler.class","sha256":"2e1d9165c6872a6c0ffabc148fdee0379b48c5825510e760c254574c86a592ca","size":2316},
+    {"data_file":"files/01.b64","path":"com/scporganization/scp_modern/blink/BlinkRenderer.class","sha256":"27b437ca5a432a59d4dd78fd4f22bf2bad1b7376a015bdd6e0a62f53788b3998","size":2684},
+    {"data_file":"files/02.b64","path":"com/scporganization/scp_modern/blink/BlinkSyncHandler.class","sha256":"ef79c671237b01fed8f89fcd5b20766cd33a68f2227bd89d957678eb9f68bbe0","size":2410},
+    {"data_file":"files/03.b64","path":"com/scporganization/scp_modern/client/ClientModEvents.class","sha256":"3cd91340a50562474ac2054ee92c623255f17dad2fd31df2571e18a7a3ca5036","size":5615},
+    {"data_file":"files/04.b64","path":"com/scporganization/scp_modern/client/ClientSetup.class","sha256":"d6a196884c183ece7f5f6d2d0e847384b50bd310b47e54fe0288ddc48fb88066","size":11214},
+    {"data_file":"files/05.b64","path":"com/scporganization/scp_modern/entity/Scp106Entity$Scp106MovementHandler.class","sha256":"6fa69a54b8ba9004799fe2cd8ec73fb6debc3f2a8e2746656cc26b51e40c8abd","size":2254},
+    {"data_file":"files/06.b64","path":"com/scporganization/scp_modern/events/HostileMobTargetEvent.class","sha256":"5d0a5eaf9781139f7538d55b97ed07a348ecfbdb9e2f818544ce6a803145dc2d","size":1864},
+    {"data_file":"files/07.b64","path":"com/scporganization/scp_modern/init/ModCreativeTabs.class","sha256":"ac240e3598f123fcfcffa1823bb13526d89052e00c23a01eb730fc806df7fe1c","size":13990},
+    {"data_file":"files/08.b64","path":"com/scporganization/scp_modern/init/ModMessages.class","sha256":"1915802bd41255e02d9fba019865636d94ad38bfff183e47342319918ffcc396","size":9635},
+    {"data_file":"files/09.b64","path":"com/scporganization/scp_modern/network/BlinkSyncPacket.class","sha256":"174819831e29c31b00ded3e2ac5e8ba4415efd00e4a6a0f9f137afc17e3b94be","size":4363},
+    {"data_file":"files/10.b64","path":"com/scporganization/scp_modern/ranks/capability/RankCapabilityRegister.class","sha256":"f7318d46451563c856dcfcdd4c65720e1feba305d7d86ea8abd3f66e59f0ff58","size":1236},
+    {"data_file":"files/11.b64","path":"com/scporganization/scp_modern/ranks/command/RankCommands.class","sha256":"f13e2fb03d4b63e40a236deeb25ef84b271722ca3923a401f8d762951e699e68","size":14051},
+    {"data_file":"files/12.b64","path":"com/scporganization/scp_modern/ranks/event/RankEventHandler.class","sha256":"df40a381f8acaea092edce2a1263a3816c89487b6825357fb32e5a77eafcd229","size":7689},
+    {"data_file":"files/13.b64","path":"com/scporganization/scp_modern/ranks/event/RankNameTagClientHandler.class","sha256":"19f9338a177d5bc2cd947a620f9d1ee3b213d29d9c4e4cefba81834d569f01c3","size":5019},
+    {"data_file":"files/14.b64","path":"com/scporganization/scp_modern/ranks/event/RankNameTagHandler.class","sha256":"67e8496036caaa9489d85f08516a31994c2127cec1da670de4a15da185d66101","size":5548},
+    {"data_file":"files/15.b64","path":"com/scporganization/scp_modern/ranks/hud/RankKeyHandler.class","sha256":"603448c709630cf1a86e176e81f5ba279986b72bc6f8af371d49708c0982d33f","size":3117},
+    {"data_file":"files/16.b64","path":"com/scporganization/scp_modern/ranks/mission/MissionEventHandler.class","sha256":"a8f3f5a39bd133d8fbf113ed4df326217989501c6b3c882a1ec46d96419d758a","size":8455}
+  ],
+  "schema": 1,
+  "semantic_sha256": "7ca24481519126214a424db547dadd912679db10fdfeac67d69ae3b588a1acaa"
+}
