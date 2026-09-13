@@ -86,7 +86,8 @@
     },
     {
       "path": "mods/scp_modern-1.20-1.2-pre-beta-b.jar",
-      "size": 7733765,
+      "size": 7763880,
+      "sha256": "09b061db2f61129eccc670bf3f5b7b8030e5e8d5be9d056967fdce5b3f634a4b",
       "source": {"provider": "modrinth", "project": "AMhZWdF0", "version_id": "tIVGkxar", "file_name": "scp_modern-1.20-1.2-pre-beta-b.jar"}
     },
     {
