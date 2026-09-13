@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "channel": "stable",
-  "version": "0.1.8",
+  "version": "0.1.10",
   "status": "staging",
   "download_url": "",
-  "sha256": "",
-  "notes": "Reserved public launcher update metadata. Client payload updates do not require a launcher rebuild."
+  "sha256": "f7842c383f114268acc6cf7bc22b03d3767565616c56bba10cce6dc66bfa033f",
+  "notes": "Current Battle Armory launcher metadata. Client payload updates do not require a launcher rebuild."
 }
