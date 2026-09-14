@@ -18,6 +18,7 @@ var MATERIAL = 'net/minecraft/client/resources/model/Material';
 var POSESTACK = 'com/mojang/blaze3d/vertex/PoseStack';
 var QUAT = 'org/joml/Quaternionf';
 var DIRECTION = 'net/minecraft/core/Direction';
+var BAKED_QUAD = 'net/minecraft/client/renderer/block/model/BakedQuad';
 
 var FAMILIES = [
     {
@@ -32,6 +33,8 @@ var FAMILIES = [
         bbmodel: 'com/razz/decocraft/models/bbmodel/BBModel',
         geometryLoader: 'com/razz/decocraft/models/bbmodel/BlockbenchLoader',
         bbModelLoader: 'com/razz/decocraft/models/bbmodel/BBModelLoader',
+        bakery: 'com/razz/decocraft/models/bbmodel/BlockbenchBakery',
+        element: 'com/razz/decocraft/models/bbmodel/BBModelParts$Element',
         parseDesc: '(Lcom/razz/decocraft/common/JsonContainer$Entry;Lcom/razz/decocraft/models/bbmodel/BBModel;Lcom/razz/decocraft/common/tileentities/AnimatedTileEntity;)Lnet/minecraft/client/model/geom/ModelPart;'
     },
     {
@@ -46,6 +49,8 @@ var FAMILIES = [
         bbmodel: 'com/razz/decocraft_nature/models/bbmodel/BBModel',
         geometryLoader: 'com/razz/decocraft_nature/models/bbmodel/BlockbenchLoader',
         bbModelLoader: 'com/razz/decocraft_nature/models/bbmodel/BBModelLoader',
+        bakery: 'com/razz/decocraft_nature/models/bbmodel/BlockbenchBakery',
+        element: 'com/razz/decocraft_nature/models/bbmodel/BBModelParts$Element',
         parseDesc: '(Lcom/razz/decocraft_nature/common/JsonContainer$Entry;Lcom/razz/decocraft_nature/models/bbmodel/BBModel;Lcom/razz/decocraft_nature/common/tileentities/AnimatedTileEntity;)Lnet/minecraft/client/model/geom/ModelPart;'
     }
 ];
@@ -394,11 +399,66 @@ function addMemoryDedupe(result, f) {
     };
 }
 
+function addQuadDedupe(result, f) {
+    result['battlearmory_' + f.id + '_baked_quad_dedupe'] = {
+        target: { type: 'CLASS', name: dotted(f.bakery) },
+        transformer: function(classNode) {
+            var methods = classNode.methods.iterator();
+            var method = null;
+            while (methods.hasNext()) {
+                var candidate = methods.next();
+                if (candidate.name === 'bakeQuad' && candidate.desc.endsWith('L' + BAKED_QUAD + ';')) {
+                    method = candidate;
+                    break;
+                }
+            }
+            if (method === null) throw 'Battle Armory ' + f.id + ' quad dedupe: bakeQuad not found';
+
+            var start = null;
+            var ctor = null;
+            var scan = method.instructions.getFirst();
+            while (scan !== null) {
+                if (start === null && scan.getOpcode() === Opcodes.NEW && scan.desc === BAKED_QUAD) {
+                    start = scan;
+                } else if (start !== null && scan.getOpcode() === Opcodes.INVOKESPECIAL &&
+                    scan.owner === BAKED_QUAD && scan.name === '<init>' &&
+                    scan.desc === '([IILnet/minecraft/core/Direction;Lnet/minecraft/client/renderer/texture/TextureAtlasSprite;Z)V') {
+                    ctor = scan;
+                    break;
+                }
+                scan = scan.getNext();
+            }
+            if (start === null || ctor === null) {
+                throw 'Battle Armory ' + f.id + ' quad dedupe: BakedQuad construction sequence not found';
+            }
+
+            // bakeQuad locals are stable in both Decocraft 3.0.4 and Nature 1.0.4:
+            // vertices=9, calculated direction=10, sprite=6, source element=1.
+            var replacement = new InsnList();
+            replacement.add(new VarInsnNode(Opcodes.ALOAD, 9));
+            replacement.add(new InsnNode(Opcodes.ICONST_M1));
+            replacement.add(new VarInsnNode(Opcodes.ALOAD, 10));
+            replacement.add(new VarInsnNode(Opcodes.ALOAD, 6));
+            replacement.add(new VarInsnNode(Opcodes.ALOAD, 1));
+            replacement.add(new FieldInsnNode(Opcodes.GETFIELD, f.element, 'shade', 'Z'));
+            replacement.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC, HELPER, 'canonicalBakedQuad',
+                '([IILjava/lang/Object;Ljava/lang/Object;Z)Ljava/lang/Object;', false));
+            replacement.add(new TypeInsnNode(Opcodes.CHECKCAST, BAKED_QUAD));
+            method.instructions.insertBefore(start, replacement);
+            removeRange(method.instructions, start, ctor);
+            method.maxStack = Math.max(method.maxStack, 5);
+            return classNode;
+        }
+    };
+}
+
 function initializeCoreMod() {
     var result = {};
     for (var i = 0; i < FAMILIES.length; i++) {
         addFamily(result, FAMILIES[i]);
         addMemoryDedupe(result, FAMILIES[i]);
+        addQuadDedupe(result, FAMILIES[i]);
     }
 
     // F3+T / resource-pack reload can temporarily coexist with the old model graph.

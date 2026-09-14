@@ -44,6 +44,26 @@ public final class DecocraftCacheRuntime {
     private static volatile boolean quaternionInitialized;
     private static final IdentityHashMap<Object, Object> FACING_QUATERNIONS = new IdentityHashMap<>();
 
+    // Content-addressed interner for immutable Decocraft BakedQuads.  A custom
+    // open-addressing table avoids millions of HashMap node/key allocations.
+    private static final Object QUAD_LOCK = new Object();
+    private static final int QUAD_INITIAL_CAPACITY = 1 << 14;
+    private static final int QUAD_MAX_ENTRIES = 1 << 20;
+    private static final int QUAD_MAX_CAPACITY = 1 << 21;
+    private static Object[] quadObjects = new Object[QUAD_INITIAL_CAPACITY];
+    private static int[][] quadVertices = new int[QUAD_INITIAL_CAPACITY][];
+    private static Object[] quadDirections = new Object[QUAD_INITIAL_CAPACITY];
+    private static Object[] quadSprites = new Object[QUAD_INITIAL_CAPACITY];
+    private static int[] quadTints = new int[QUAD_INITIAL_CAPACITY];
+    private static boolean[] quadShades = new boolean[QUAD_INITIAL_CAPACITY];
+    private static long[] quadHashes = new long[QUAD_INITIAL_CAPACITY];
+    private static int quadMask = QUAD_INITIAL_CAPACITY - 1;
+    private static int quadSize;
+    private static boolean quadInternerSaturated;
+    private static long quadHits;
+    private static long quadMisses;
+    private static volatile MethodHandle bakedQuadConstructor;
+
     private static final Function<Object, Object> CUTOUT_FN = atlas -> invokeRenderType(false, atlas);
     private static final Function<Object, Object> TRANSLUCENT_FN = atlas -> invokeRenderType(true, atlas);
 
@@ -75,7 +95,199 @@ public final class DecocraftCacheRuntime {
             state.materialCache.clear();
             state.resourceParsedModels.clear();
         }
-        System.out.println("[BattleArmory] Resource reload: cleared Decocraft caches (models=" + models + ", materials=" + materials + ", resourceModels=" + resourceModels + ").");
+
+        int quadEntries;
+        long hits;
+        long misses;
+        synchronized (QUAD_LOCK) {
+            quadEntries = quadSize;
+            hits = quadHits;
+            misses = quadMisses;
+            resetQuadInterner();
+        }
+        System.out.println("[BattleArmory] Resource reload: cleared Decocraft caches (models=" + models
+                + ", materials=" + materials + ", resourceModels=" + resourceModels
+                + ", quads=" + quadEntries + ", quadHits=" + hits + ", quadMisses=" + misses + ").");
+    }
+
+    /**
+     * Return one canonical immutable BakedQuad for identical baked vertex data.
+     * The constructor is invoked only on misses, so duplicate BakedQuad objects and
+     * their int[] vertex payloads never enter Minecraft's retained baked-model graph.
+     */
+    public static Object canonicalBakedQuad(int[] vertices, int tint, Object direction, Object sprite, boolean shade) {
+        if (vertices == null || direction == null || sprite == null) {
+            return newBakedQuad(vertices, tint, direction, sprite, shade);
+        }
+
+        long hash = quadHash(vertices, tint, direction, sprite, shade);
+        synchronized (QUAD_LOCK) {
+            for (;;) {
+                int slot = ((int) (hash ^ (hash >>> 32))) & quadMask;
+                int probes = 0;
+                while (true) {
+                    Object existing = quadObjects[slot];
+                    if (existing == null) break;
+                    if (quadHashes[slot] == hash
+                            && quadTints[slot] == tint
+                            && quadDirections[slot] == direction
+                            && quadSprites[slot] == sprite
+                            && quadShades[slot] == shade
+                            && sameVertices(quadVertices[slot], vertices)) {
+                        quadHits++;
+                        return existing;
+                    }
+                    slot = (slot + 1) & quadMask;
+                    if (++probes > quadMask) {
+                        quadInternerSaturated = true;
+                        quadMisses++;
+                        return newBakedQuad(vertices, tint, direction, sprite, shade);
+                    }
+                }
+
+                if (quadSize >= QUAD_MAX_ENTRIES) {
+                    quadInternerSaturated = true;
+                    quadMisses++;
+                    return newBakedQuad(vertices, tint, direction, sprite, shade);
+                }
+                if ((quadSize + 1) * 10 > quadObjects.length * 6 && quadObjects.length < QUAD_MAX_CAPACITY) {
+                    growQuadInterner();
+                    continue;
+                }
+
+                Object created = newBakedQuad(vertices, tint, direction, sprite, shade);
+                quadObjects[slot] = created;
+                quadVertices[slot] = vertices;
+                quadDirections[slot] = direction;
+                quadSprites[slot] = sprite;
+                quadTints[slot] = tint;
+                quadShades[slot] = shade;
+                quadHashes[slot] = hash;
+                quadSize++;
+                quadMisses++;
+                return created;
+            }
+        }
+    }
+
+    private static Object newBakedQuad(int[] vertices, int tint, Object direction, Object sprite, boolean shade) {
+        try {
+            ensureBakedQuadConstructor(direction, sprite);
+            return bakedQuadConstructor.invoke(vertices, tint, direction, sprite, shade);
+        } catch (Throwable t) {
+            throw new RuntimeException("Battle Armory BakedQuad construction failed", t);
+        }
+    }
+
+    private static void ensureBakedQuadConstructor(Object direction, Object sprite) throws Exception {
+        if (bakedQuadConstructor != null) return;
+        synchronized (DecocraftCacheRuntime.class) {
+            if (bakedQuadConstructor != null) return;
+            ClassLoader loader = direction != null ? direction.getClass().getClassLoader() : null;
+            if (loader == null && sprite != null) loader = sprite.getClass().getClassLoader();
+            if (loader == null) loader = Thread.currentThread().getContextClassLoader();
+            if (loader == null) loader = DecocraftCacheRuntime.class.getClassLoader();
+            Class<?> bakedQuad = Class.forName("net.minecraft.client.renderer.block.model.BakedQuad", false, loader);
+            Constructor<?> match = null;
+            for (Constructor<?> ctor : bakedQuad.getDeclaredConstructors()) {
+                Class<?>[] p = ctor.getParameterTypes();
+                if (p.length == 5
+                        && p[0] == int[].class
+                        && p[1] == int.class
+                        && p[2].getName().equals("net.minecraft.core.Direction")
+                        && p[3].getName().equals("net.minecraft.client.renderer.texture.TextureAtlasSprite")
+                        && p[4] == boolean.class) {
+                    match = ctor;
+                    break;
+                }
+            }
+            if (match == null) throw new NoSuchMethodException("BakedQuad(int[],int,Direction,TextureAtlasSprite,boolean)");
+            match.setAccessible(true);
+            bakedQuadConstructor = MethodHandles.lookup().unreflectConstructor(match);
+        }
+    }
+
+    private static long quadHash(int[] vertices, int tint, Object direction, Object sprite, boolean shade) {
+        long h = 0xcbf29ce484222325L;
+        for (int value : vertices) {
+            h ^= (value & 0xffffffffL);
+            h *= 0x100000001b3L;
+        }
+        h ^= (tint & 0xffffffffL);
+        h *= 0x100000001b3L;
+        h ^= (System.identityHashCode(direction) & 0xffffffffL);
+        h *= 0x100000001b3L;
+        h ^= (System.identityHashCode(sprite) & 0xffffffffL);
+        h *= 0x100000001b3L;
+        h ^= shade ? 0x9e3779b97f4a7c15L : 0x243f6a8885a308d3L;
+        h ^= h >>> 33;
+        h *= 0xff51afd7ed558ccdL;
+        h ^= h >>> 33;
+        h *= 0xc4ceb9fe1a85ec53L;
+        h ^= h >>> 33;
+        return h;
+    }
+
+    private static boolean sameVertices(int[] a, int[] b) {
+        if (a == b) return true;
+        if (a == null || b == null || a.length != b.length) return false;
+        for (int i = 0; i < a.length; i++) {
+            if (a[i] != b[i]) return false;
+        }
+        return true;
+    }
+
+    private static void growQuadInterner() {
+        int oldCapacity = quadObjects.length;
+        int newCapacity = Math.min(oldCapacity << 1, QUAD_MAX_CAPACITY);
+        if (newCapacity <= oldCapacity) return;
+
+        Object[] oldObjects = quadObjects;
+        int[][] oldVertices = quadVertices;
+        Object[] oldDirections = quadDirections;
+        Object[] oldSprites = quadSprites;
+        int[] oldTints = quadTints;
+        boolean[] oldShades = quadShades;
+        long[] oldHashes = quadHashes;
+
+        quadObjects = new Object[newCapacity];
+        quadVertices = new int[newCapacity][];
+        quadDirections = new Object[newCapacity];
+        quadSprites = new Object[newCapacity];
+        quadTints = new int[newCapacity];
+        quadShades = new boolean[newCapacity];
+        quadHashes = new long[newCapacity];
+        quadMask = newCapacity - 1;
+
+        for (int i = 0; i < oldCapacity; i++) {
+            Object quad = oldObjects[i];
+            if (quad == null) continue;
+            long hash = oldHashes[i];
+            int slot = ((int) (hash ^ (hash >>> 32))) & quadMask;
+            while (quadObjects[slot] != null) slot = (slot + 1) & quadMask;
+            quadObjects[slot] = quad;
+            quadVertices[slot] = oldVertices[i];
+            quadDirections[slot] = oldDirections[i];
+            quadSprites[slot] = oldSprites[i];
+            quadTints[slot] = oldTints[i];
+            quadShades[slot] = oldShades[i];
+            quadHashes[slot] = hash;
+        }
+    }
+
+    private static void resetQuadInterner() {
+        quadObjects = new Object[QUAD_INITIAL_CAPACITY];
+        quadVertices = new int[QUAD_INITIAL_CAPACITY][];
+        quadDirections = new Object[QUAD_INITIAL_CAPACITY];
+        quadSprites = new Object[QUAD_INITIAL_CAPACITY];
+        quadTints = new int[QUAD_INITIAL_CAPACITY];
+        quadShades = new boolean[QUAD_INITIAL_CAPACITY];
+        quadHashes = new long[QUAD_INITIAL_CAPACITY];
+        quadMask = QUAD_INITIAL_CAPACITY - 1;
+        quadSize = 0;
+        quadInternerSaturated = false;
+        quadHits = 0L;
+        quadMisses = 0L;
     }
 
     /** Session-stable BBModels parsed from the immutable mod jar, keyed by jar path. */
