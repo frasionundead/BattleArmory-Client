@@ -119,6 +119,157 @@ public final class DecocraftCacheRuntime {
 
     private DecocraftCacheRuntime() {}
 
+    /**
+     * Called at the beginning of ModelManager.reload, after the reload overlay is active
+     * and before the replacement model graph is baked. This intentionally touches only
+     * old baked-model references; render geometry/layout from 0020 is unchanged.
+     */
+    public static void prepareVanillaModelReload(Object modelManager) {
+        if (modelManager == null) return;
+        long before = usedHeapBytes();
+        long clearedRefs = 0L;
+        boolean droppedBakery = false;
+        try {
+            ClassLoader loader = modelManager.getClass().getClassLoader();
+            Class<?> bakedModelClass = Class.forName(
+                    "net.minecraft.client.resources.model.BakedModel", false, loader);
+
+            // ModelManager.bakedRegistry owns the old top-level baked graph.
+            clearedRefs += clearMapsContainingValues(modelManager, bakedModelClass);
+
+            // BlockModelShaper duplicates references by BlockState.
+            Object blockShaper = fieldValueByTypeName(
+                    modelManager, "net.minecraft.client.renderer.block.BlockModelShaper");
+            if (blockShaper != null) {
+                clearedRefs += clearMapsContainingValues(blockShaper, bakedModelClass);
+            }
+
+            // ItemModelShaper.shapesCache is another duplicate BakedModel graph. Keep
+            // its registration map (ModelResourceLocation values) intact.
+            Object minecraft = minecraftInstance(loader);
+            if (minecraft != null) {
+                Object itemRenderer = fieldValueByTypeName(
+                        minecraft, "net.minecraft.client.renderer.entity.ItemRenderer");
+                if (itemRenderer != null) {
+                    Object itemShaper = fieldValueByTypeName(
+                            itemRenderer, "net.minecraft.client.renderer.ItemModelShaper");
+                    if (itemShaper != null) {
+                        clearedRefs += clearMapsContainingValues(itemShaper, bakedModelClass);
+                    }
+                }
+            }
+
+            // The previous ModelBakery also retains its bakedTopLevelModels. ModelManager
+            // reload builds the replacement bakery as a local future and assigns it only in
+            // apply(), so the old field is no longer needed once a new reload starts.
+            droppedBakery = clearFieldByTypeName(
+                    modelManager, "net.minecraft.client.resources.model.ModelBakery");
+
+            releaseBakeScratchCaches();
+
+            if (clearedRefs > 0L || droppedBakery) {
+                System.gc();
+                long after = usedHeapBytes();
+                long freed = Math.max(0L, before - after);
+                System.out.println("[BattleArmory][ReloadEvict] old model graph released: refs="
+                        + clearedRefs + ", bakery=" + droppedBakery + ", heapBefore=" + before
+                        + ", heapAfter=" + after + ", gcFreed=" + freed);
+            }
+        } catch (Throwable t) {
+            // Reload must remain usable even if a third-party transformer changes a field.
+            System.err.println("[BattleArmory][ReloadEvict] skipped due to compatibility issue: " + t);
+        }
+    }
+
+    private static long clearMapsContainingValues(Object owner, Class<?> wantedValueType) throws Exception {
+        long cleared = 0L;
+        Class<?> type = owner.getClass();
+        while (type != null) {
+            for (Field field : type.getDeclaredFields()) {
+                if (Modifier.isStatic(field.getModifiers())) continue;
+                field.setAccessible(true);
+                Object value = field.get(owner);
+                if (!(value instanceof Map<?, ?>)) continue;
+                Map<?, ?> map = (Map<?, ?>) value;
+                if (map.isEmpty()) continue;
+
+                boolean matches = false;
+                int inspected = 0;
+                for (Object candidate : map.values()) {
+                    if (candidate != null) {
+                        matches = wantedValueType.isInstance(candidate);
+                        break;
+                    }
+                    if (++inspected >= 16) break;
+                }
+                if (!matches) continue;
+
+                int size = map.size();
+                try {
+                    map.clear();
+                } catch (UnsupportedOperationException immutable) {
+                    if (!Modifier.isFinal(field.getModifiers())
+                            && field.getType().isAssignableFrom(HashMap.class)) {
+                        field.set(owner, new HashMap<>());
+                    } else {
+                        throw immutable;
+                    }
+                }
+                cleared += size;
+            }
+            type = type.getSuperclass();
+        }
+        return cleared;
+    }
+
+    private static Object fieldValueByTypeName(Object owner, String typeName) throws Exception {
+        Class<?> type = owner.getClass();
+        while (type != null) {
+            for (Field field : type.getDeclaredFields()) {
+                if (Modifier.isStatic(field.getModifiers())) continue;
+                if (!field.getType().getName().equals(typeName)) continue;
+                field.setAccessible(true);
+                return field.get(owner);
+            }
+            type = type.getSuperclass();
+        }
+        return null;
+    }
+
+    private static boolean clearFieldByTypeName(Object owner, String typeName) throws Exception {
+        Class<?> type = owner.getClass();
+        while (type != null) {
+            for (Field field : type.getDeclaredFields()) {
+                if (Modifier.isStatic(field.getModifiers())) continue;
+                if (!field.getType().getName().equals(typeName)) continue;
+                field.setAccessible(true);
+                Object old = field.get(owner);
+                if (old == null) return false;
+                field.set(owner, null);
+                return true;
+            }
+            type = type.getSuperclass();
+        }
+        return false;
+    }
+
+    private static Object minecraftInstance(ClassLoader loader) throws Exception {
+        Class<?> minecraftClass = Class.forName("net.minecraft.client.Minecraft", false, loader);
+        for (Method method : minecraftClass.getDeclaredMethods()) {
+            if (!Modifier.isStatic(method.getModifiers()) || method.getParameterCount() != 0) continue;
+            if (method.getReturnType() != minecraftClass) continue;
+            method.setAccessible(true);
+            Object instance = method.invoke(null);
+            if (instance != null) return instance;
+        }
+        return null;
+    }
+
+    private static long usedHeapBytes() {
+        Runtime runtime = Runtime.getRuntime();
+        return runtime.totalMemory() - runtime.freeMemory();
+    }
+
     /** Drop resource-derived caches before Minecraft starts a resource-pack reload. */
     public static void clearForResourceReload() {
         int models = 0;

@@ -636,6 +636,39 @@ function addEmbeddiumBakedQuadViewBridge(result) {
     };
 }
 
+function addVanillaModelReloadEviction(result) {
+    result['battlearmory_vanilla_model_reload_eviction'] = {
+        target: { type: 'CLASS', name: 'net.minecraft.client.resources.model.ModelManager' },
+        transformer: function(classNode) {
+            var methods = classNode.methods.iterator();
+            var found = null;
+            while (methods.hasNext()) {
+                var method = methods.next();
+                if (method.desc.indexOf('Lnet/minecraft/server/packs/resources/PreparableReloadListener$PreparationBarrier;') >= 0 &&
+                    method.desc.indexOf('Lnet/minecraft/server/packs/resources/ResourceManager;') >= 0 &&
+                    method.desc.endsWith(')Ljava/util/concurrent/CompletableFuture;')) {
+                    found = method;
+                    break;
+                }
+            }
+            if (found === null) throw 'Battle Armory reload eviction: ModelManager.reload not found';
+
+            var code = new InsnList();
+            code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+            code.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                HELPER,
+                'prepareVanillaModelReload',
+                '(Ljava/lang/Object;)V',
+                false
+            ));
+            found.instructions.insertBefore(found.instructions.getFirst(), code);
+            ASMAPI.log('INFO', '[BattleArmory] Installed pre-bake old-model eviction for resource reload');
+            return classNode;
+        }
+    };
+}
+
 function initializeCoreMod() {
     var result = {};
     for (var i = 0; i < FAMILIES.length; i++) {
@@ -645,6 +678,7 @@ function initializeCoreMod() {
     }
     addBakedQuadRotationStorage(result);
     addEmbeddiumBakedQuadViewBridge(result);
+    addVanillaModelReloadEviction(result);
 
     // F3+T / resource-pack reload can temporarily coexist with the old model graph.
     // Clear Battle Armory's strong geometry/material references before Minecraft begins
