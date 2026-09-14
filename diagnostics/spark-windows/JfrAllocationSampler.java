@@ -19,7 +19,6 @@
  */
 package me.lucko.spark.common.sampler.async;
 
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import jdk.jfr.FlightRecorder;
 import jdk.jfr.Recording;
 import me.lucko.spark.common.SparkPlatform;
@@ -63,12 +62,12 @@ public final class JfrAllocationSampler extends AbstractSampler {
     public JfrAllocationSampler(SparkPlatform platform, SamplerSettings settings) {
         super(platform, settings);
         this.dataAggregator = new AsyncDataAggregator(settings.threadGrouper());
-        this.scheduler = Executors.newSingleThreadScheduledExecutor(
-                new ThreadFactoryBuilder()
-                        .setNameFormat("spark-jfr-allocation-worker-thread")
-                        .setUncaughtExceptionHandler(SparkThreadFactory.EXCEPTION_HANDLER)
-                        .build()
-        );
+        this.scheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "spark-jfr-allocation-worker-thread");
+            thread.setDaemon(true);
+            thread.setUncaughtExceptionHandler(SparkThreadFactory.EXCEPTION_HANDLER);
+            return thread;
+        });
     }
 
     public static boolean isSupported() {
@@ -93,7 +92,6 @@ public final class JfrAllocationSampler extends AbstractSampler {
 
         try {
             this.outputFile = this.platform.getTemporaryFiles().create("spark-windows-", "-allocation.jfr");
-            // Recording.dump writes the file itself; retain only the unique path.
             Files.deleteIfExists(this.outputFile);
 
             this.recording = new Recording();
