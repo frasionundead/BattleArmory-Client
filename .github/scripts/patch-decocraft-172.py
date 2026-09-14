@@ -18,8 +18,8 @@ helper = '''    public static Object uncachedBakedQuad(int[] vertices, int tint,
 runtime = runtime.replace(needle, helper + needle, 1)
 
 count = coremod.count("'canonicalBakedQuad'")
-if count != 2:
-    raise SystemExit(f'expected 2 canonicalBakedQuad call sites, got {count}')
+if count != 1:
+    raise SystemExit(f'expected 1 canonicalBakedQuad call site, got {count}')
 coremod = coremod.replace("'canonicalBakedQuad'", "'uncachedBakedQuad'")
 
 # Embeddium stores two per-BakedQuad caches (packed normal + ModelQuadFacing).
