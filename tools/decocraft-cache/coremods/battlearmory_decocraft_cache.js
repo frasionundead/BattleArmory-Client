@@ -636,98 +636,6 @@ function addEmbeddiumBakedQuadViewBridge(result) {
     };
 }
 
-function addEmbeddiumBakedQuadCacheCompaction(result) {
-    var mixinName = 'me.jellysquid.mods.sodium.mixin.core.model.quad.BakedQuadMixin';
-    result['battlearmory_embeddium_baked_quad_cache_compaction'] = {
-        target: { type: 'CLASS', name: mixinName },
-        transformer: function(classNode) {
-            var removedNormal = false;
-            var removedNormalFace = false;
-            var fields = classNode.fields.iterator();
-            while (fields.hasNext()) {
-                var field = fields.next();
-                if (field.name === 'normal' && field.desc === 'I') {
-                    fields.remove();
-                    removedNormal = true;
-                } else if (field.name === 'normalFace') {
-                    fields.remove();
-                    removedNormalFace = true;
-                }
-            }
-            if (!removedNormal || !removedNormalFace) {
-                throw 'Battle Armory Embeddium compaction: normal cache fields not found';
-            }
-
-            var getNormal = null;
-            var getNormalFace = null;
-            var methods = classNode.methods.iterator();
-            while (methods.hasNext()) {
-                var method = methods.next();
-                if (method.name === 'getComputedFaceNormal' && method.desc === '()I') getNormal = method;
-                if (method.name === 'getNormalFace' && method.desc.indexOf('()L') === 0) getNormalFace = method;
-            }
-            if (getNormal === null || getNormalFace === null) {
-                throw 'Battle Armory Embeddium compaction: normal methods not found';
-            }
-
-            var calculateNormal = null;
-            var insn = getNormal.instructions.getFirst();
-            while (insn !== null) {
-                if (insn.getOpcode() === Opcodes.INVOKESTATIC && insn.name === 'calculateNormal' && insn.desc.slice(-2) === ')I') {
-                    calculateNormal = insn;
-                    break;
-                }
-                insn = insn.getNext();
-            }
-            if (calculateNormal === null) {
-                throw 'Battle Armory Embeddium compaction: calculateNormal call not found';
-            }
-
-            var findNormalFace = null;
-            insn = getNormalFace.instructions.getFirst();
-            while (insn !== null) {
-                if (insn.getOpcode() === Opcodes.INVOKESTATIC && insn.name === 'findNormalFace') {
-                    findNormalFace = insn;
-                    break;
-                }
-                insn = insn.getNext();
-            }
-            if (findNormalFace === null) {
-                throw 'Battle Armory Embeddium compaction: findNormalFace call not found';
-            }
-
-            var calcOwner = calculateNormal.owner;
-            var calcName = calculateNormal.name;
-            var calcDesc = calculateNormal.desc;
-            var faceOwner = findNormalFace.owner;
-            var faceName = findNormalFace.name;
-            var faceDesc = findNormalFace.desc;
-
-            getNormal.instructions.clear();
-            getNormal.tryCatchBlocks.clear();
-            getNormal.localVariables = null;
-            getNormal.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
-            getNormal.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, calcOwner, calcName, calcDesc, false));
-            getNormal.instructions.add(new InsnNode(Opcodes.IRETURN));
-            getNormal.maxStack = 1;
-            getNormal.maxLocals = 1;
-
-            getNormalFace.instructions.clear();
-            getNormalFace.tryCatchBlocks.clear();
-            getNormalFace.localVariables = null;
-            getNormalFace.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
-            getNormalFace.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, classNode.name, 'getComputedFaceNormal', '()I', false));
-            getNormalFace.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, faceOwner, faceName, faceDesc, false));
-            getNormalFace.instructions.add(new InsnNode(Opcodes.ARETURN));
-            getNormalFace.maxStack = 1;
-            getNormalFace.maxLocals = 1;
-
-            ASMAPI.log('INFO', '[BattleArmory] Removed Embeddium retained BakedQuad normal caches');
-            return classNode;
-        }
-    };
-}
-
 function initializeCoreMod() {
     var result = {};
     for (var i = 0; i < FAMILIES.length; i++) {
@@ -737,7 +645,6 @@ function initializeCoreMod() {
     }
     addBakedQuadRotationStorage(result);
     addEmbeddiumBakedQuadViewBridge(result);
-    addEmbeddiumBakedQuadCacheCompaction(result);
 
     // F3+T / resource-pack reload can temporarily coexist with the old model graph.
     // Clear Battle Armory's strong geometry/material references before Minecraft begins

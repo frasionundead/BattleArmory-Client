@@ -888,6 +888,7 @@ public final class DecocraftCacheRuntime {
                     previous = now;
                 }
                 writeWholeModelStats();
+                releaseBakeScratchCaches();
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
             } catch (Throwable t) {
@@ -896,6 +897,19 @@ public final class DecocraftCacheRuntime {
         }, "BattleArmory-ModelCacheStats");
         writer.setDaemon(true);
         writer.start();
+    }
+
+    private static void releaseBakeScratchCaches() {
+        long wholeEntries = 0L;
+        long rotationEntries = 0L;
+        for (FamilyState state : FAMILIES.values()) {
+            wholeEntries += state.wholeBakedModels.size();
+            rotationEntries += state.rotationBaseVertices.size();
+            state.wholeBakedModels.clear();
+            state.rotationBaseVertices.clear();
+        }
+        System.out.println("[BattleArmory][BakeScratch] released post-bake caches: wholeModels="
+                + wholeEntries + ", rotationBases=" + rotationEntries);
     }
 
     private static void writeWholeModelStats() {
