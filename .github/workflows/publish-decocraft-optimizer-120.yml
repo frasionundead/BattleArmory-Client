@@ -1,0 +1,83 @@
+name: Publish Decocraft optimizer 1.2.0
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-decocraft-optimizer-120.yml'
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Download validated 1.2.0 staging artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/ba120
+          mkdir -p /tmp/ba120
+          gh run download 34800282533 \
+            --repo frasionundead/BattleArmory-Client \
+            --name battlearmory-decocraft-cache-1.2.0-staging \
+            --dir /tmp/ba120
+          JAR="$(find /tmp/ba120 -type f -name '*.jar' -print -quit)"
+          test -n "$JAR"
+          test "$(stat -c%s "$JAR")" = "18554"
+          echo "92b9b766440018cc5034457e0b8016b9f9a9d038c083ac8ec260b543b8f49ef3  $JAR" | sha256sum -c -
+          cp "$JAR" payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          printf '%s\n' '92b9b766440018cc5034457e0b8016b9f9a9d038c083ac8ec260b543b8f49ef3' > payload/mods/battlearmory-decocraft-cache-1.0.0.jar.sha256
+          printf '%s\n' '18554' > payload/mods/battlearmory-decocraft-cache-1.0.0.jar.size
+      - name: Create build 0009 and advance stable
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          old = json.loads(Path('builds/0008.json').read_text(encoding='utf-8'))
+          old['build'] = 9
+          old['name'] = 'Battle Armory Client 0009'
+          old['state'] = 'staging'
+          found = False
+          for f in old.get('files', []):
+              if f.get('path') == 'mods/battlearmory-decocraft-cache-1.0.0.jar':
+                  f['size'] = 18554
+                  f['sha256'] = '92b9b766440018cc5034457e0b8016b9f9a9d038c083ac8ec260b543b8f49ef3'
+                  found = True
+          if not found:
+              raise SystemExit('helper entry missing from build 0008')
+          for c in old.get('components', []):
+              if c.get('id') == 'decocraft_render_cache':
+                  c['notes'] = ('v1.2.0 client-only optimizer: cached Decocraft + Decocraft Nature geometry, '
+                                'cached materials/quaternions, flattened animation traversal, and cutout/translucent selection.')
+          Path('builds/0009.json').write_text(json.dumps(old, indent=2) + '\n', encoding='utf-8')
+
+          stable = json.loads(Path('stable.json').read_text(encoding='utf-8'))
+          stable['build'] = 9
+          stable['build_manifest'] = 'builds/0009.json'
+          stable['status'] = 'staging'
+          Path('stable.json').write_text(json.dumps(stable, indent=2) + '\n', encoding='utf-8')
+          PY
+          python -m json.tool builds/0009.json >/dev/null
+          python -m json.tool stable.json >/dev/null
+          grep -n 'battlearmory-decocraft-cache-1.0.0.jar' builds/0009.json
+          grep -n '"build": 9' stable.json
+      - name: Commit published payload and manifests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name 'battlearmory-bot'
+          git config user.email 'battlearmory-bot@users.noreply.github.com'
+          git add \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar.sha256 \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar.size \
+            builds/0009.json stable.json
+          git commit -m 'Publish Decocraft optimizer 1.2.0 as build 0009'
+          git push
