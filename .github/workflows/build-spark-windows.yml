@@ -1,0 +1,103 @@
+name: Build Battle Armory Spark Windows Allocation
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build-spark-windows.yml'
+      - 'diagnostics/spark-windows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Battle Armory client repo
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Checkout exact spark 1.10.53 source
+        shell: bash
+        run: |
+          rm -rf .spark-build
+          git clone https://github.com/lucko/spark.git .spark-build
+          cd .spark-build
+          git checkout 8c253aec4db3450dc640c4b66f74f9c8908514fa
+          test "$(git rev-parse HEAD)" = "8c253aec4db3450dc640c4b66f74f9c8908514fa"
+          test "$(git describe --tags)" = "v1.10-53-g8c253ae"
+
+      - name: Apply Battle Armory Windows JFR allocation backend
+        shell: bash
+        run: |
+          cp diagnostics/spark-windows/JfrAllocationSampler.java \
+            .spark-build/spark-common/src/main/java/me/lucko/spark/common/sampler/async/JfrAllocationSampler.java
+          cp diagnostics/spark-windows/SamplerBuilder.java \
+            .spark-build/spark-common/src/main/java/me/lucko/spark/common/sampler/SamplerBuilder.java
+
+          cat >> .spark-build/spark-common/build.gradle <<'EOF'
+
+          // Battle Armory: Minecraft 1.20.1 runs on Java 17 and the Windows
+          // allocation fallback uses the Java 17 jdk.jfr API.
+          tasks.withType(JavaCompile).configureEach {
+              options.release = 17
+          }
+          EOF
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.spark-build/spark-common/src/main/java/me/lucko/spark/common/command/modules/SamplerModule.java')
+          s = p.read_text()
+          old = 'import me.lucko.spark.common.sampler.async.AsyncSampler;\n'
+          new = old + 'import me.lucko.spark.common.sampler.async.JfrAllocationSampler;\n'
+          if new not in s:
+              if old not in s:
+                  raise SystemExit('SamplerModule import anchor missing')
+              s = s.replace(old, new, 1)
+          old_engine = '(sampler instanceof AsyncSampler ? "async" : "built-in java")'
+          new_engine = '(sampler instanceof AsyncSampler ? "async" : sampler instanceof JfrAllocationSampler ? "windows jfr" : "built-in java")'
+          if new_engine not in s:
+              if old_engine not in s:
+                  raise SystemExit('SamplerModule engine label anchor missing')
+              s = s.replace(old_engine, new_engine, 1)
+          p.write_text(s)
+          PY
+
+      - name: Build Forge 1.20.1 spark
+        working-directory: .spark-build
+        run: ./gradlew :spark-forge:build --stacktrace
+
+      - name: Stage custom jar
+        shell: bash
+        run: |
+          SRC=.spark-build/spark-forge/build/libs/spark-1.10.53-forge.jar
+          test -f "$SRC"
+          mkdir -p payload/mods
+          cp "$SRC" payload/mods/spark-1.10.53-forge-ba-winalloc.jar
+          sha256sum payload/mods/spark-1.10.53-forge-ba-winalloc.jar \
+            | awk '{print $1}' > payload/mods/spark-1.10.53-forge-ba-winalloc.jar.sha256
+          wc -c < payload/mods/spark-1.10.53-forge-ba-winalloc.jar \
+            | tr -d ' ' > payload/mods/spark-1.10.53-forge-ba-winalloc.jar.size
+
+      - name: Commit built diagnostic jar
+        shell: bash
+        run: |
+          git config user.name 'battle-armory-bot'
+          git config user.email 'battle-armory-bot@users.noreply.github.com'
+          git add \
+            payload/mods/spark-1.10.53-forge-ba-winalloc.jar \
+            payload/mods/spark-1.10.53-forge-ba-winalloc.jar.sha256 \
+            payload/mods/spark-1.10.53-forge-ba-winalloc.jar.size
+          if git diff --cached --quiet; then
+            echo 'Custom spark jar already up to date.'
+            exit 0
+          fi
+          git commit -m 'Build spark 1.10.53 with Windows JFR allocation backend'
+          git push
