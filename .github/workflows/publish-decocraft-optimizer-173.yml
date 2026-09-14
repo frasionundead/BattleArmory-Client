@@ -1,0 +1,122 @@
+name: Publish Decocraft optimizer 1.7.3 safe memory cleanup
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-decocraft-optimizer-173.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Restore proven 0018 optimizer base
+        shell: bash
+        run: |
+          set -euxo pipefail
+          BASE=c1723a3594dcbd52e47e49db0fa6f714c3a21e2c
+          git checkout "$BASE" -- \
+            tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java \
+            tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js \
+            tools/decocraft-cache/META-INF/mods.toml \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          python .github/scripts/patch-decocraft-173.py
+          grep -n 'uncachedBakedQuad' tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          grep -n 'releaseBakeScratchCaches' tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          grep -n "'uncachedBakedQuad'" tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          grep -n 'version="1.7.3"' tools/decocraft-cache/META-INF/mods.toml
+
+      - name: Compile and package optimizer
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf build/decocraft173 dist
+          mkdir -p build/decocraft173/classes build/decocraft173/jar/META-INF build/decocraft173/jar/coremods dist
+          javac -source 17 -target 17 -d build/decocraft173/classes tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          cp -R build/decocraft173/classes/com build/decocraft173/jar/
+          cp tools/decocraft-cache/META-INF/mods.toml build/decocraft173/jar/META-INF/mods.toml
+          cp tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js build/decocraft173/jar/coremods/
+          OLD=payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          unzip -p "$OLD" META-INF/MANIFEST.MF > build/decocraft173/MANIFEST.MF
+          unzip -p "$OLD" META-INF/coremods.json > build/decocraft173/jar/META-INF/coremods.json
+          unzip -p "$OLD" pack.mcmeta > build/decocraft173/jar/pack.mcmeta
+          unzip -p "$OLD" battlearmory_translucent_materials.txt > build/decocraft173/jar/battlearmory_translucent_materials.txt
+          node --check tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          jar cfm dist/battlearmory-decocraft-cache-1.7.3.jar build/decocraft173/MANIFEST.MF -C build/decocraft173/jar .
+
+      - name: Static verification
+        shell: bash
+        run: |
+          set -euxo pipefail
+          JAR=dist/battlearmory-decocraft-cache-1.7.3.jar
+          test -s "$JAR"
+          javap -classpath "$JAR" com.battlearmory.decocraftcache.DecocraftCacheRuntime | grep -q 'uncachedBakedQuad'
+          unzip -p "$JAR" META-INF/mods.toml | grep -q 'version="1.7.3"'
+          unzip -p "$JAR" coremods/battlearmory_decocraft_cache.js | grep -q "'uncachedBakedQuad'"
+          unzip -p "$JAR" coremods/battlearmory_decocraft_cache.js | grep -q 'battlearmory_embeddium_baked_quad_view_bridge'
+          if unzip -p "$JAR" coremods/battlearmory_decocraft_cache.js | grep -q 'battlearmory_embeddium_baked_quad_cache_compaction'; then
+            echo 'unsafe 0019 Embeddium compaction leaked into 1.7.3' >&2
+            exit 1
+          fi
+          sha256sum "$JAR"
+          wc -c < "$JAR"
+
+      - name: Publish payload and build 0020
+        shell: bash
+        run: |
+          set -euxo pipefail
+          JAR=dist/battlearmory-decocraft-cache-1.7.3.jar
+          DEST=payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          SHA="$(sha256sum "$JAR" | awk '{print $1}')"
+          SIZE="$(wc -c < "$JAR" | tr -d '[:space:]')"
+          cp "$JAR" "$DEST"
+          printf '%s\n' "$SHA" > "$DEST.sha256"
+          printf '%s\n' "$SIZE" > "$DEST.size"
+          SHA="$SHA" SIZE="$SIZE" python - <<'PY'
+          import json, os
+          from pathlib import Path
+          old=json.loads(Path('builds/0018.json').read_text())
+          old['build']=20
+          old['name']='Battle Armory Client 0020'
+          old['state']='staging'
+          for f in old['files']:
+              if f.get('path')=='mods/battlearmory-decocraft-cache-1.0.0.jar':
+                  f['size']=int(os.environ['SIZE'])
+                  f['sha256']=os.environ['SHA']
+                  break
+          else:
+              raise SystemExit('helper missing')
+          for c in old.get('components',[]):
+              if c.get('id')=='decocraft_render_cache':
+                  c['notes']=('v1.7.3 safe cleanup: based exactly on proven 0018/v1.7.1. Keeps rotated-vertex compression and Embeddium orientation bridge unchanged. Disables the saturated low-hit global BakedQuad interner and releases whole-model replay/rotation-base scratch maps after model baking stabilizes. Does not remove or rewrite Embeddium BakedQuad cache fields.')
+          Path('builds/0020.json').write_text(json.dumps(old,indent=2)+'\n')
+          stable=json.loads(Path('stable.json').read_text())
+          stable['build']=20
+          stable['build_manifest']='builds/0020.json'
+          stable['status']='staging'
+          Path('stable.json').write_text(json.dumps(stable,indent=2)+'\n')
+          PY
+          python -m json.tool builds/0020.json >/dev/null
+          python -m json.tool stable.json >/dev/null
+          git config user.name battlearmory-bot
+          git config user.email battlearmory-bot@users.noreply.github.com
+          git add \
+            tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java \
+            tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js \
+            tools/decocraft-cache/META-INF/mods.toml \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar.sha256 \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar.size \
+            builds/0020.json stable.json
+          git commit -m 'Publish safe Decocraft optimizer 1.7.3 as build 0020'
+          git push
