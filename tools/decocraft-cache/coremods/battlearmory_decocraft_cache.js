@@ -273,5 +273,35 @@ function addFamily(result, f) {
 function initializeCoreMod() {
     var result = {};
     for (var i = 0; i < FAMILIES.length; i++) addFamily(result, FAMILIES[i]);
+
+    // F3+T / resource-pack reload can temporarily coexist with the old model graph.
+    // Clear Battle Armory's strong geometry/material references before Minecraft begins
+    // building the new resource set so the old cached ModelParts are immediately GC-eligible.
+    result['battlearmory_resource_reload_clear'] = {
+        target: { type: 'CLASS', name: 'net.minecraft.client.Minecraft' },
+        transformer: function(classNode) {
+            var methods = classNode.methods.iterator();
+            var found = null;
+            while (methods.hasNext()) {
+                var method = methods.next();
+                if ((method.name === 'm_91391_' || method.name === 'reloadResourcePacks') &&
+                    method.desc === '()Ljava/util/concurrent/CompletableFuture;') {
+                    found = method;
+                    break;
+                }
+            }
+            if (found === null) throw 'Battle Armory cache: Minecraft resource reload method was not found';
+            var call = new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                HELPER,
+                'clearForResourceReload',
+                '()V',
+                false
+            );
+            found.instructions.insertBefore(found.instructions.getFirst(), call);
+            return classNode;
+        }
+    };
+
     return result;
 }

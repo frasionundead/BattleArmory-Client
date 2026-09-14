@@ -60,6 +60,20 @@ public final class DecocraftCacheRuntime {
 
     private DecocraftCacheRuntime() {}
 
+    /** Drop resource-derived caches before Minecraft starts a resource-pack reload. */
+    public static void clearForResourceReload() {
+        int models = 0;
+        int materials = 0;
+        for (FamilyState state : FAMILIES.values()) {
+            models += state.modelCache.size();
+            materials += state.materialCache.size();
+            state.modelCache.clear();
+            state.nodesByModel.clear();
+            state.materialCache.clear();
+        }
+        System.out.println("[BattleArmory] Resource reload: cleared Decocraft caches (models=" + models + ", materials=" + materials + ").");
+    }
+
     public static Object getModel(Object renderer, Object meta, Object model, Object tileEntity) {
         FamilyState state = stateForRenderer(renderer);
         if (state.disabled) {
