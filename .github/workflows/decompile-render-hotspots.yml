@@ -1,0 +1,45 @@
+name: Decompile render hotspots
+on:
+  push:
+    paths:
+      - '.github/workflows/decompile-render-hotspots.yml'
+permissions:
+  contents: write
+jobs:
+  decompile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Download CFR
+        run: curl -fsSL -o /tmp/cfr.jar https://repo1.maven.org/maven2/org/benf/cfr/0.152/cfr-0.152.jar
+      - name: Decompile selected classes
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf _decomp
+          mkdir -p _decomp/helper _decomp/nature _decomp/another
+          java -jar /tmp/cfr.jar payload/mods/battlearmory-decocraft-cache-1.0.0.jar --outputdir /tmp/helper-all --silent true
+          cp /tmp/helper-all/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java _decomp/helper/
+          mkdir -p /tmp/nature/com/razz/decocraft_nature/client/render
+          unzip -p payload/mods/decocraft_nature-1.0.4-1.20.1.jar com/razz/decocraft_nature/client/render/AnimatedRenderer.class > /tmp/nature/com/razz/decocraft_nature/client/render/AnimatedRenderer.class
+          unzip -p payload/mods/decocraft_nature-1.0.4-1.20.1.jar com/razz/decocraft_nature/client/render/AnimatedModelRenderer.class > /tmp/nature/com/razz/decocraft_nature/client/render/AnimatedModelRenderer.class
+          java -jar /tmp/cfr.jar /tmp/nature/com/razz/decocraft_nature/client/render/AnimatedRenderer.class --outputdir /tmp/nature-src --silent true || true
+          java -jar /tmp/cfr.jar /tmp/nature/com/razz/decocraft_nature/client/render/AnimatedModelRenderer.class --outputdir /tmp/nature-src --silent true || true
+          find /tmp/nature-src -name '*.java' -maxdepth 20 -print -exec cp {} _decomp/nature/ \;
+          mkdir -p /tmp/another/com/starfish_studios/another_furniture/client/renderer/blockentity
+          unzip -p payload/mods/another_furniture-forge-1.20.1-3.0.4.jar com/starfish_studios/another_furniture/client/renderer/blockentity/ServiceBellButtonRenderer.class > /tmp/another/com/starfish_studios/another_furniture/client/renderer/blockentity/ServiceBellButtonRenderer.class
+          java -jar /tmp/cfr.jar /tmp/another/com/starfish_studios/another_furniture/client/renderer/blockentity/ServiceBellButtonRenderer.class --outputdir /tmp/another-src --silent true || true
+          find /tmp/another-src -name '*.java' -maxdepth 20 -print -exec cp {} _decomp/another/ \;
+      - name: Commit decompilation
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name 'battlearmory-bot'
+          git config user.email 'battlearmory-bot@users.noreply.github.com'
+          git add _decomp
+          git commit -m 'Decompile selected render hotspots'
+          git push
