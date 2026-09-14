@@ -81,7 +81,105 @@ jobs:
           wc -c < payload/mods/spark-1.10.53-forge-ba-winalloc.jar \
             | tr -d ' ' > payload/mods/spark-1.10.53-forge-ba-winalloc.jar.size
 
-      - name: Commit built diagnostic jar
+      - name: Prepare immutable client build 0005
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import copy
+          import json
+
+          build4_path = Path('builds/0004.json')
+          build5_path = Path('builds/0005.json')
+          stable_path = Path('stable.json')
+          sha_path = Path('payload/mods/spark-1.10.53-forge-ba-winalloc.jar.sha256')
+          size_path = Path('payload/mods/spark-1.10.53-forge-ba-winalloc.jar.size')
+
+          if build5_path.exists():
+              raise SystemExit('Refusing to overwrite immutable builds/0005.json')
+
+          build4 = json.loads(build4_path.read_text(encoding='utf-8'))
+          stable = json.loads(stable_path.read_text(encoding='utf-8'))
+          sha256 = sha_path.read_text(encoding='utf-8').strip().lower()
+          size = int(size_path.read_text(encoding='utf-8').strip())
+
+          if build4.get('build') != 4:
+              raise SystemExit('builds/0004.json is not build 4')
+          if stable.get('build') != 4 or stable.get('build_manifest') != 'builds/0004.json':
+              raise SystemExit('stable.json moved since this promotion was prepared')
+          if len(sha256) != 64 or any(c not in '0123456789abcdef' for c in sha256):
+              raise SystemExit('custom Spark SHA-256 is malformed')
+          if size <= 0:
+              raise SystemExit('custom Spark size is invalid')
+
+          spark_path = 'mods/spark-1.10.53-forge.jar'
+          old_spark = [f for f in build4.get('files', []) if f.get('path') == spark_path]
+          if len(old_spark) != 1:
+              raise SystemExit('build 0004 must contain exactly one stock Spark entry')
+          old_source = old_spark[0].get('source', {})
+          if old_source.get('provider') != 'modrinth' or old_source.get('version_id') != '4FXHDE9F':
+              raise SystemExit('build 0004 Spark donor is not the pinned Modrinth 1.10.53 build')
+
+          build5 = copy.deepcopy(build4)
+          build5['build'] = 5
+          build5['name'] = 'Battle Armory Client 0005'
+
+          replaced = 0
+          for index, file_entry in enumerate(build5.get('files', [])):
+              if file_entry.get('path') != spark_path:
+                  continue
+              build5['files'][index] = {
+                  'path': spark_path,
+                  'url': 'https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/spark-1.10.53-forge-ba-winalloc.jar',
+                  'size': size,
+                  'sha256': sha256,
+              }
+              replaced += 1
+          if replaced != 1:
+              raise SystemExit('custom Spark replacement count was not exactly one')
+
+          for component in build5.get('components', []):
+              if component.get('id') == 'client_profiler':
+                  component['status'] = 'DIAGNOSTIC'
+                  component['notes'] = 'spark 1.10.53 with Battle Armory Windows JFR allocation backend.'
+
+          # Strong immutability check: every non-Spark file entry must be byte-for-byte
+          # equivalent as JSON data to build 0004, and the file count must not change.
+          old_files = build4.get('files', [])
+          new_files = build5.get('files', [])
+          if len(old_files) != len(new_files):
+              raise SystemExit('build 0005 changed the managed file count')
+          for old, new in zip(old_files, new_files):
+              if old.get('path') == spark_path:
+                  continue
+              if old != new:
+                  raise SystemExit(f'non-Spark manifest entry changed unexpectedly: {old.get("path")}')
+
+          new_spark = [f for f in new_files if f.get('path') == spark_path]
+          if len(new_spark) != 1:
+              raise SystemExit('build 0005 does not contain exactly one Spark destination')
+          if new_spark[0].get('sha256') != sha256 or new_spark[0].get('size') != size:
+              raise SystemExit('build 0005 Spark metadata does not match built jar')
+
+          build5_path.write_text(json.dumps(build5, indent=2) + '\n', encoding='utf-8')
+
+          promoted = copy.deepcopy(stable)
+          promoted['build'] = 5
+          promoted['build_manifest'] = 'builds/0005.json'
+          stable_path.write_text(json.dumps(promoted, indent=2) + '\n', encoding='utf-8')
+
+          # Re-read exactly what will be committed.
+          check_build5 = json.loads(build5_path.read_text(encoding='utf-8'))
+          check_stable = json.loads(stable_path.read_text(encoding='utf-8'))
+          if check_build5.get('build') != 5:
+              raise SystemExit('final build 0005 verification failed')
+          if check_stable.get('build') != 5 or check_stable.get('build_manifest') != 'builds/0005.json':
+              raise SystemExit('final stable promotion verification failed')
+          print(f'Prepared build 0005: Spark size={size}, sha256={sha256}')
+          PY
+
+      - name: Commit custom Spark and promote build 0005
         shell: bash
         run: |
           set -euo pipefail
@@ -90,10 +188,13 @@ jobs:
           git add \
             payload/mods/spark-1.10.53-forge-ba-winalloc.jar \
             payload/mods/spark-1.10.53-forge-ba-winalloc.jar.sha256 \
-            payload/mods/spark-1.10.53-forge-ba-winalloc.jar.size
-          if git diff --cached --quiet; then
-            echo 'Custom spark jar already up to date.'
+            payload/mods/spark-1.10.53-forge-ba-winalloc.jar.size \
+            builds/0005.json \
+            stable.json
+          git diff --cached --check
+          git diff --cached --quiet && {
+            echo 'Nothing to promote.'
             exit 0
-          fi
-          git commit -m 'Build spark 1.10.53 with Windows JFR allocation backend'
+          }
+          git commit -m 'Promote Windows allocation-capable Spark as client build 0005'
           git push
