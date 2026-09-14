@@ -291,6 +291,10 @@ public final class DecocraftCacheRuntime {
         }
     }
 
+    public static Object uncachedBakedQuad(int[] vertices, int tint, Object direction, Object sprite, boolean shade) {
+        return newBakedQuad(vertices, tint, direction, sprite, shade);
+    }
+
     private static Object newBakedQuad(int[] vertices, int tint, Object direction, Object sprite, boolean shade) {
         try {
             ensureBakedQuadConstructor(direction, sprite);
