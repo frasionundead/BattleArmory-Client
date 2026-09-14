@@ -1,0 +1,65 @@
+name: Publish build 0007 Decocraft cache metadata fix
+
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-build-0007-decocraft-cache-metadata.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create build 0007 and point stable channel to it
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json
+          helper_path = 'payload/mods/battlearmory-decocraft-cache-1.0.0.jar'
+          data = open(helper_path, 'rb').read()
+          sha = hashlib.sha256(data).hexdigest()
+          size = len(data)
+          assert sha == 'ca6faa2d8971efd8eddf38006f16040d3030c260b5565274012fe3f8a4d367a2'
+          assert size == 7059
+
+          with open('builds/0006.json', encoding='utf-8') as f:
+              build = json.load(f)
+          build['build'] = 7
+          build['name'] = 'Battle Armory Client 0007'
+          found = False
+          for item in build['files']:
+              if item.get('path') == 'mods/battlearmory-decocraft-cache-1.0.0.jar':
+                  item['size'] = size
+                  item['sha256'] = sha
+                  found = True
+          assert found
+          with open('builds/0007.json', 'w', encoding='utf-8') as f:
+              json.dump(build, f, indent=2, ensure_ascii=False)
+              f.write('\n')
+
+          with open('stable.json', encoding='utf-8') as f:
+              stable = json.load(f)
+          stable['build'] = 7
+          stable['build_manifest'] = 'builds/0007.json'
+          stable['status'] = 'staging'
+          with open('stable.json', 'w', encoding='utf-8') as f:
+              json.dump(stable, f, indent=2, ensure_ascii=False)
+              f.write('\n')
+          PY
+
+      - name: Commit build 0007
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'battle-armory-bot'
+          git config user.email 'battle-armory-bot@users.noreply.github.com'
+          git add builds/0007.json stable.json
+          git diff --cached --quiet && exit 0
+          git commit -m 'Publish client build 0007 metadata-clean Decocraft helper'
+          git push
