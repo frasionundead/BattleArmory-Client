@@ -1,0 +1,144 @@
+name: Publish Decocraft optimizer 1.7.1 Embeddium rotation bridge
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-decocraft-optimizer-171.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Patch 1.7.0 for Embeddium direct vertex reads
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          rp=Path('tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java')
+          cp=Path('tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js')
+          mp=Path('tools/decocraft-cache/META-INF/mods.toml')
+          r=rp.read_text(); c=cp.read_text(); m=mp.read_text()
+          marker='''    /** Called by the coremod-patched BakedQuad getter only for compressed variants. */\n    public static int[] materializeRotatedVertices(int[] base, byte encodedPlan) {\n'''
+          helper='''    /**\n     * Embeddium 0.3.31 reads BakedQuad.vertices directly from its BakedQuadMixin\n     * instead of calling BakedQuad.getVertices(). Route those reads through the\n     * patched getter so compressed quarter-turn variants materialize correctly.\n     */\n    public static int[] effectiveBakedQuadVertices(Object quad) {\n        if (quad == null) return null;\n        try {\n            ensureBakedQuadCompressionMethods(quad);\n            return (int[]) bakedQuadVerticesMethod.invoke(quad);\n        } catch (InvocationTargetException e) {\n            Throwable cause = e.getCause() == null ? e : e.getCause();\n            throw new RuntimeException("BakedQuad effective vertices failed", cause);\n        } catch (Throwable t) {\n            throw new RuntimeException("BakedQuad effective vertices failed", t);\n        }\n    }\n\n'''+marker
+          if marker not in r: raise SystemExit('runtime marker missing')
+          r=r.replace(marker, helper, 1)
+
+          init='''function initializeCoreMod() {\n'''
+          bridge=r'''function addEmbeddiumBakedQuadViewBridge(result) {
+    var mixinName = 'me.jellysquid.mods.sodium.mixin.core.model.quad.BakedQuadMixin';
+    result['battlearmory_embeddium_baked_quad_view_bridge'] = {
+        target: { type: 'CLASS', name: mixinName },
+        transformer: function(classNode) {
+            var patched = 0;
+            var methods = classNode.methods.iterator();
+            while (methods.hasNext()) {
+                var method = methods.next();
+                var insn = method.instructions.getFirst();
+                while (insn !== null) {
+                    var next = insn.getNext();
+                    if (insn.getOpcode() === Opcodes.GETFIELD && insn.desc === '[I') {
+                        var call = new MethodInsnNode(
+                            Opcodes.INVOKESTATIC,
+                            HELPER,
+                            'effectiveBakedQuadVertices',
+                            '(Ljava/lang/Object;)[I',
+                            false
+                        );
+                        method.instructions.set(insn, call);
+                        patched++;
+                    }
+                    insn = next;
+                }
+            }
+            if (patched === 0) throw 'Battle Armory Embeddium bridge: no int[] vertex field reads found';
+            ASMAPI.log('INFO', '[BattleArmory] Patched Embeddium BakedQuadMixin vertex reads: ' + patched);
+            return classNode;
+        }
+    };
+}
+
+'''
+          if init not in c: raise SystemExit('coremod init marker missing')
+          c=c.replace(init, bridge+init, 1)
+          needle='''    addBakedQuadRotationStorage(result);\n'''
+          if needle not in c: raise SystemExit('rotation storage enable missing')
+          c=c.replace(needle, needle+'''    addEmbeddiumBakedQuadViewBridge(result);\n''',1)
+          if 'version="1.7.0"' not in m: raise SystemExit('version marker missing')
+          m=m.replace('version="1.7.0"','version="1.7.1"',1)
+          rp.write_text(r); cp.write_text(c); mp.write_text(m)
+          PY
+          grep -n 'effectiveBakedQuadVertices' tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          grep -n 'battlearmory_embeddium_baked_quad_view_bridge' tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+
+      - name: Compile and package optimizer
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf build/decocraft171 dist
+          mkdir -p build/decocraft171/classes build/decocraft171/jar/META-INF build/decocraft171/jar/coremods dist
+          javac -source 17 -target 17 -d build/decocraft171/classes tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          cp -R build/decocraft171/classes/com build/decocraft171/jar/
+          cp tools/decocraft-cache/META-INF/mods.toml build/decocraft171/jar/META-INF/mods.toml
+          cp tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js build/decocraft171/jar/coremods/
+          OLD=payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          unzip -p "$OLD" META-INF/MANIFEST.MF > build/decocraft171/MANIFEST.MF
+          unzip -p "$OLD" META-INF/coremods.json > build/decocraft171/jar/META-INF/coremods.json
+          unzip -p "$OLD" pack.mcmeta > build/decocraft171/jar/pack.mcmeta
+          unzip -p "$OLD" battlearmory_translucent_materials.txt > build/decocraft171/jar/battlearmory_translucent_materials.txt
+          node --check tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          jar cfm dist/battlearmory-decocraft-cache-1.7.1.jar build/decocraft171/MANIFEST.MF -C build/decocraft171/jar .
+
+      - name: Static verification
+        shell: bash
+        run: |
+          set -euxo pipefail
+          JAR=dist/battlearmory-decocraft-cache-1.7.1.jar
+          test -s "$JAR"
+          javap -classpath "$JAR" com.battlearmory.decocraftcache.DecocraftCacheRuntime | grep -q 'effectiveBakedQuadVertices'
+          unzip -p "$JAR" META-INF/mods.toml | grep -q 'version="1.7.1"'
+          unzip -p "$JAR" coremods/battlearmory_decocraft_cache.js | grep -q 'battlearmory_embeddium_baked_quad_view_bridge'
+          unzip -p "$JAR" coremods/battlearmory_decocraft_cache.js | grep -q 'me.jellysquid.mods.sodium.mixin.core.model.quad.BakedQuadMixin'
+          sha256sum "$JAR"
+          wc -c < "$JAR"
+
+      - name: Publish payload and build 0018
+        shell: bash
+        run: |
+          set -euxo pipefail
+          JAR=dist/battlearmory-decocraft-cache-1.7.1.jar
+          DEST=payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          SHA="$(sha256sum "$JAR" | awk '{print $1}')"
+          SIZE="$(wc -c < "$JAR" | tr -d '[:space:]')"
+          cp "$JAR" "$DEST"
+          printf '%s\n' "$SHA" > "$DEST.sha256"
+          printf '%s\n' "$SIZE" > "$DEST.size"
+          SHA="$SHA" SIZE="$SIZE" python - <<'PY'
+          import json, os
+          from pathlib import Path
+          old=json.loads(Path('builds/0017.json').read_text())
+          old['build']=18; old['name']='Battle Armory Client 0018'; old['state']='staging'
+          for f in old['files']:
+              if f.get('path')=='mods/battlearmory-decocraft-cache-1.0.0.jar':
+                  f['size']=int(os.environ['SIZE']); f['sha256']=os.environ['SHA']; break
+          else: raise SystemExit('helper missing')
+          for c in old.get('components',[]):
+              if c.get('id')=='decocraft_render_cache':
+                  c['notes']=('v1.7.1: fixes Embeddium 0.3.31 direct BakedQuad.vertices reads so rotated Decocraft/Nature variants use their reconstructed orientation instead of the shared base payload. Keeps v1.7 rotation compression, all geometry, BBModel dedupe, render caches and reload clearing. Diagnostics remain battlearmory-rotation-compression-stats.txt.')
+          Path('builds/0018.json').write_text(json.dumps(old,indent=2)+'\n')
+          stable=json.loads(Path('stable.json').read_text()); stable['build']=18; stable['build_manifest']='builds/0018.json'; stable['status']='staging'; Path('stable.json').write_text(json.dumps(stable,indent=2)+'\n')
+          PY
+          git config user.name battlearmory-bot
+          git config user.email battlearmory-bot@users.noreply.github.com
+          git add tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js tools/decocraft-cache/META-INF/mods.toml payload/mods/battlearmory-decocraft-cache-1.0.0.jar payload/mods/battlearmory-decocraft-cache-1.0.0.jar.sha256 payload/mods/battlearmory-decocraft-cache-1.0.0.jar.size builds/0018.json stable.json
+          git commit -m 'Publish Decocraft optimizer 1.7.1 Embeddium rotation fix as build 0018'
+          git push
