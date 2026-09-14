@@ -414,6 +414,14 @@ function addQuadDedupe(result, f) {
             }
             if (method === null) throw 'Battle Armory ' + f.id + ' quad dedupe: bakeQuad not found';
 
+            // Attribution only: count how many quads each Decocraft family asks to bake.
+            var statsCode = new InsnList();
+            statsCode.add(new LdcInsnNode(f.id));
+            statsCode.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC, HELPER, 'recordBakeCall',
+                '(Ljava/lang/String;)V', false));
+            method.instructions.insertBefore(method.instructions.getFirst(), statsCode);
+
             var start = null;
             var ctor = null;
             var scan = method.instructions.getFirst();

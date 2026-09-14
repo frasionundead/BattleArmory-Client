@@ -11,6 +11,8 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -19,6 +21,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 
 public final class DecocraftCacheRuntime {
@@ -64,6 +68,14 @@ public final class DecocraftCacheRuntime {
     private static long quadMisses;
     private static volatile MethodHandle bakedQuadConstructor;
 
+    // Temporary startup diagnostics for build 0013.  These counters tell us how
+    // many quads Decocraft/Nature ask to bake versus how many unique quads survive
+    // the content-addressed interner.  A daemon snapshot writer exits after the
+    // bake count has been stable for ~10 seconds.
+    private static final AtomicLong DECOCRAFT_BAKE_CALLS = new AtomicLong();
+    private static final AtomicLong NATURE_BAKE_CALLS = new AtomicLong();
+    private static final AtomicBoolean BAKE_STATS_THREAD_STARTED = new AtomicBoolean();
+
     private static final Function<Object, Object> CUTOUT_FN = atlas -> invokeRenderType(false, atlas);
     private static final Function<Object, Object> TRANSLUCENT_FN = atlas -> invokeRenderType(true, atlas);
 
@@ -105,9 +117,81 @@ public final class DecocraftCacheRuntime {
             misses = quadMisses;
             resetQuadInterner();
         }
+        DECOCRAFT_BAKE_CALLS.set(0L);
+        NATURE_BAKE_CALLS.set(0L);
+        BAKE_STATS_THREAD_STARTED.set(false);
         System.out.println("[BattleArmory] Resource reload: cleared Decocraft caches (models=" + models
                 + ", materials=" + materials + ", resourceModels=" + resourceModels
                 + ", quads=" + quadEntries + ", quadHits=" + hits + ", quadMisses=" + misses + ").");
+    }
+
+    public static void recordBakeCall(String family) {
+        if ("decocraft_nature".equals(family)) {
+            NATURE_BAKE_CALLS.incrementAndGet();
+        } else if ("decocraft".equals(family)) {
+            DECOCRAFT_BAKE_CALLS.incrementAndGet();
+        }
+        startBakeStatsWriter();
+    }
+
+    private static void startBakeStatsWriter() {
+        if (!BAKE_STATS_THREAD_STARTED.compareAndSet(false, true)) return;
+        Thread writer = new Thread(() -> {
+            long previous = -1L;
+            int stableIntervals = 0;
+            try {
+                while (stableIntervals < 5) {
+                    Thread.sleep(2000L);
+                    long current = DECOCRAFT_BAKE_CALLS.get() + NATURE_BAKE_CALLS.get();
+                    writeBakeStatsSnapshot();
+                    if (current == previous) stableIntervals++;
+                    else stableIntervals = 0;
+                    previous = current;
+                }
+                writeBakeStatsSnapshot();
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            } catch (Throwable t) {
+                System.err.println("[BattleArmory][BakeStats] writer failed: " + t);
+            }
+        }, "BattleArmory-BakeStats");
+        writer.setDaemon(true);
+        writer.start();
+    }
+
+    private static void writeBakeStatsSnapshot() {
+        long decocraft = DECOCRAFT_BAKE_CALLS.get();
+        long nature = NATURE_BAKE_CALLS.get();
+        int unique;
+        long hits;
+        long misses;
+        boolean saturated;
+        synchronized (QUAD_LOCK) {
+            unique = quadSize;
+            hits = quadHits;
+            misses = quadMisses;
+            saturated = quadInternerSaturated;
+        }
+        long calls = decocraft + nature;
+        double hitRate = calls == 0L ? 0.0 : (100.0 * hits / calls);
+        String stats = "Battle Armory bake diagnostics 0013\n"
+                + "decocraft_calls=" + decocraft + "\n"
+                + "decocraft_nature_calls=" + nature + "\n"
+                + "family_calls_total=" + calls + "\n"
+                + "interner_unique=" + unique + "\n"
+                + "interner_hits=" + hits + "\n"
+                + "interner_misses=" + misses + "\n"
+                + "interner_hit_rate_percent=" + String.format(java.util.Locale.ROOT, "%.2f", hitRate) + "\n"
+                + "interner_saturated=" + saturated + "\n";
+        try {
+            Path out = Path.of(System.getProperty("user.dir"), "battlearmory-bake-stats.txt");
+            Files.writeString(out, stats, StandardCharsets.UTF_8);
+        } catch (Throwable t) {
+            System.err.println("[BattleArmory][BakeStats] snapshot write failed: " + t);
+        }
+        System.out.println("[BattleArmory][BakeStats] calls=" + calls + " decocraft=" + decocraft
+                + " nature=" + nature + " unique=" + unique + " hits=" + hits + " misses=" + misses
+                + " saturated=" + saturated);
     }
 
     /**
