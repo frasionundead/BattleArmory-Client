@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "channel": "stable",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "status": "staging",
   "download_url": "",
-  "sha256": "179466097d8d4312ee878dbabcfbb94df2f9d2c4a89b8bb21795e2689b0afe49",
-  "notes": "Adds the main-screen client memory selector with persistent 6/7/8/10/12/14/16/18/20/22/24 GB choices. Recommended minimum: 6 GB."
+  "sha256": "66fed86076ee4144124a5754b5114a8acc38251a3d6c509b471420536a9e81d1",
+  "notes": "Keeps the main-screen client memory selector with persistent 6/7/8/10/12/14/16/18/20/22/24 GB choices. Default and recommended minimum: 8 GB."
 }
