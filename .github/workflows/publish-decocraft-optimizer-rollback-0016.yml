@@ -1,0 +1,69 @@
+name: Publish build 0016 rollback Decocraft blockstate bake elision
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-decocraft-optimizer-rollback-0016.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore known-good optimizer 1.5.0 payload
+        shell: bash
+        run: |
+          set -euxo pipefail
+          GOOD=09a7f68b464fa42cd597f7b5488fa6c709a04c72
+          DEST=payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          git show "$GOOD:$DEST" > "$DEST"
+          SHA="$(sha256sum "$DEST" | awk '{print $1}')"
+          SIZE="$(wc -c < "$DEST" | tr -d '[:space:]')"
+          test "$SHA" = '339250f2442e8e484e980aec9f8c53cb7812de2d2de13ee94887fd39d3353a65'
+          test "$SIZE" = '30323'
+          printf '%s\n' "$SHA" > "$DEST.sha256"
+          printf '%s\n' "$SIZE" > "$DEST.size"
+
+      - name: Publish rollback as build 0016
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          base = json.loads(Path('builds/0014.json').read_text(encoding='utf-8'))
+          base['build'] = 16
+          base['name'] = 'Battle Armory Client 0016'
+          base['state'] = 'staging'
+          for c in base.get('components', []):
+              if c.get('id') == 'decocraft_render_cache':
+                  c['notes'] = ('v1.5.0 rollback hotfix: restores build 0014 rendering after v1.6.0 blockstate bake elision hid '
+                                'valid Decocraft/Nature world geometry. BBModel graph dedupe and render caches remain enabled; '
+                                'whole-model cache remains enabled; blockstate BakedQuad generation is NOT suppressed.')
+          Path('builds/0016.json').write_text(json.dumps(base, indent=2) + '\n', encoding='utf-8')
+          stable = json.loads(Path('stable.json').read_text(encoding='utf-8'))
+          stable['build'] = 16
+          stable['build_manifest'] = 'builds/0016.json'
+          stable['status'] = 'staging'
+          Path('stable.json').write_text(json.dumps(stable, indent=2) + '\n', encoding='utf-8')
+          PY
+          python -m json.tool builds/0016.json >/dev/null
+          python -m json.tool stable.json >/dev/null
+          grep -q '"build": 16' stable.json
+          grep -q 'Battle Armory Client 0016' builds/0016.json
+          grep -q '339250f2442e8e484e980aec9f8c53cb7812de2d2de13ee94887fd39d3353a65' builds/0016.json
+
+          git config user.name 'battlearmory-bot'
+          git config user.email 'battlearmory-bot@users.noreply.github.com'
+          git add payload/mods/battlearmory-decocraft-cache-1.0.0.jar \
+                  payload/mods/battlearmory-decocraft-cache-1.0.0.jar.sha256 \
+                  payload/mods/battlearmory-decocraft-cache-1.0.0.jar.size \
+                  builds/0016.json stable.json
+          git commit -m 'Rollback Decocraft blockstate bake elision as build 0016'
+          git push
