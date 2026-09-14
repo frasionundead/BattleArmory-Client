@@ -461,12 +461,54 @@ function addQuadDedupe(result, f) {
     };
 }
 
+function addWholeModelCache(result, f) {
+    var slash = f.geometryLoader.lastIndexOf('/');
+    var modelClass = f.geometryLoader.substring(0, slash + 1) + 'BlockbenchModel';
+    result['battlearmory_' + f.id + '_whole_model_cache'] = {
+        target: { type: 'CLASS', name: dotted(modelClass) },
+        transformer: function(classNode) {
+            var methods = classNode.methods.iterator();
+            var method = null;
+            while (methods.hasNext()) {
+                var candidate = methods.next();
+                if (candidate.name === 'addQuads' && candidate.desc.indexOf('Lnet/minecraftforge/client/model/IModelBuilder;') >= 0) {
+                    method = candidate;
+                    break;
+                }
+            }
+            if (method === null) throw 'Battle Armory ' + f.id + ' whole-model cache: addQuads not found';
+
+            method.instructions.clear();
+            method.tryCatchBlocks.clear();
+            if (method.localVariables !== null) method.localVariables.clear();
+            var code = new InsnList();
+            code.add(new LdcInsnNode(f.id));
+            code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+            code.add(new VarInsnNode(Opcodes.ALOAD, 1));
+            code.add(new VarInsnNode(Opcodes.ALOAD, 2));
+            code.add(new VarInsnNode(Opcodes.ALOAD, 3));
+            code.add(new VarInsnNode(Opcodes.ALOAD, 4));
+            code.add(new VarInsnNode(Opcodes.ALOAD, 5));
+            code.add(new VarInsnNode(Opcodes.ALOAD, 6));
+            code.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC, HELPER, 'addQuadsCached',
+                '(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V',
+                false));
+            code.add(new InsnNode(Opcodes.RETURN));
+            method.instructions.add(code);
+            method.maxStack = 8;
+            method.maxLocals = 7;
+            return classNode;
+        }
+    };
+}
+
 function initializeCoreMod() {
     var result = {};
     for (var i = 0; i < FAMILIES.length; i++) {
         addFamily(result, FAMILIES[i]);
         addMemoryDedupe(result, FAMILIES[i]);
-        addQuadDedupe(result, FAMILIES[i]);
+        addWholeModelCache(result, FAMILIES[i]);
     }
 
     // F3+T / resource-pack reload can temporarily coexist with the old model graph.
