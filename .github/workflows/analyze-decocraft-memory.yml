@@ -14,12 +14,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Inspect Decocraft resources
+      - name: Inspect Decocraft resources and BBModel geometry
         shell: bash
         run: |
           set -euo pipefail
@@ -28,9 +28,8 @@ jobs:
           echo '=== JAR size ==='
           stat -c '%s bytes' "$JAR"
           echo
-          echo '=== Resource counts ==='
           python - <<'PY'
-          import zipfile, json, collections, os
+          import zipfile, json, collections, os, statistics
           jar='payload/mods/decocraft-3.0.4-1.20.1-slim.jar'
           with zipfile.ZipFile(jar) as z:
               names=z.namelist()
@@ -42,95 +41,118 @@ jobs:
                   elif n.startswith('assets/decocraft/models/item/') and n.endswith('.json'): cats['model_item_json']+=1
                   elif n.startswith('assets/decocraft/blockstates/') and n.endswith('.json'): cats['blockstate_json']+=1
                   elif n.startswith('assets/decocraft/') and n.endswith('.json'): cats['other_asset_json']+=1
-                  elif n.startswith('assets/decocraft/') and (n.endswith('.bbmodel') or n.endswith('.bbmodel.json')): cats['bbmodel']+=1
+                  elif n.startswith('assets/decocraft/') and n.endswith('.bbmodel'): cats['bbmodel']+=1
                   elif n.startswith('assets/decocraft/textures/'): cats['textures']+=1
+              print('=== Resource counts ===')
               print('\n'.join(f'{k}: {v}' for k,v in sorted(cats.items())))
-              # Biggest files under assets/decocraft
+
+              print('\n=== Sample item/blockstate/model JSON ===')
+              samples=[]
+              for prefix in ('assets/decocraft/models/item/','assets/decocraft/blockstates/'):
+                  samples.extend([n for n in names if n.startswith(prefix) and n.endswith('.json')][:4])
+              for n in samples:
+                  print('---', n, '---')
+                  print(z.read(n).decode('utf-8','replace')[:1600])
+
+              print('\n=== 40 largest Decocraft assets ===')
               rows=[]
               for n in names:
                   if n.startswith('assets/decocraft/') and not n.endswith('/'):
                       info=z.getinfo(n)
                       rows.append((info.file_size,n))
-              print('\n=== 40 largest Decocraft assets ===')
-              for s,n in sorted(rows, reverse=True)[:40]:
-                  print(f'{s:10d}  {n}')
+              for s,n in sorted(rows, reverse=True)[:40]: print(f'{s:10d}  {n}')
 
-              # Parse normal model JSON and count geometry-ish fields.
-              element_total=face_total=rotation_total=0
-              parsed=failed=0
-              top=[]
+              # Normal Minecraft model JSONs contain no geometry in this mod; verify.
+              element_total=face_total=0
               for n in names:
-                  if not (n.startswith('assets/decocraft/models/') and n.endswith('.json')):
-                      continue
-                  try:
-                      obj=json.loads(z.read(n))
-                  except Exception:
-                      failed+=1; continue
-                  parsed+=1
+                  if not (n.startswith('assets/decocraft/models/') and n.endswith('.json')): continue
+                  try: obj=json.loads(z.read(n))
+                  except Exception: continue
                   elems=obj.get('elements') if isinstance(obj,dict) else None
-                  e=len(elems) if isinstance(elems,list) else 0
-                  f=0
-                  r=0
                   if isinstance(elems,list):
+                      element_total += len(elems)
                       for el in elems:
-                          if isinstance(el,dict):
-                              faces=el.get('faces')
-                              if isinstance(faces,dict): f += len(faces)
-                              if 'rotation' in el: r += 1
-                  element_total+=e; face_total+=f; rotation_total+=r
-                  if e or f: top.append((f,e,n))
+                          faces=el.get('faces') if isinstance(el,dict) else None
+                          if isinstance(faces,dict): face_total += len(faces)
               print('\n=== Vanilla model JSON geometry ===')
-              print('parsed:',parsed,'failed:',failed,'elements:',element_total,'faces:',face_total,'rotated_elements:',rotation_total)
-              print('Top 30 by face count:')
-              for f,e,n in sorted(top, reverse=True)[:30]:
-                  print(f'faces={f:7d} elements={e:7d} {n}')
+              print('elements:',element_total,'faces:',face_total)
 
-              # Extension distribution under models and model-like paths.
-              ext=collections.Counter()
+              # Parse Blockbench .bbmodel JSON and measure actual geometry retained by Decocraft.
+              bb=[]
+              failed=[]
+              all_elements=all_faces=all_outliner=all_animations=0
+              all_strings=0
               for n in names:
-                  if n.startswith('assets/decocraft/models/') and not n.endswith('/'):
-                      base=os.path.basename(n)
-                      ext[base.split('.',1)[-1] if '.' in base else '<none>'] += 1
-              print('\n=== assets/decocraft/models extension distribution ===')
-              for k,v in ext.most_common(): print(k,v)
+                  if not (n.startswith('assets/decocraft/models/bbmodel/') and n.endswith('.bbmodel')): continue
+                  try:
+                      raw=z.read(n)
+                      obj=json.loads(raw)
+                  except Exception as e:
+                      failed.append((n,str(e))); continue
+                  elems=obj.get('elements') or []
+                  outliner=obj.get('outliner') or []
+                  anim=obj.get('animations') or []
+                  faces=0
+                  for el in elems:
+                      f=el.get('faces') if isinstance(el,dict) else None
+                      if isinstance(f,dict): faces += len(f)
+                  # Rough JSON string node count, to correlate with heap String/byte[].
+                  def walk(v):
+                      if isinstance(v,str): return 1
+                      if isinstance(v,dict): return sum(1 + walk(k) + walk(x) for k,x in v.items())
+                      if isinstance(v,list): return sum(walk(x) for x in v)
+                      return 0
+                  strings=walk(obj)
+                  all_elements+=len(elems); all_faces+=faces; all_outliner+=len(outliner); all_animations+=len(anim); all_strings+=strings
+                  bb.append((faces,len(elems),len(raw),strings,n))
+              print('\n=== Blockbench .bbmodel aggregate ===')
+              print('parsed:',len(bb),'failed:',len(failed))
+              print('elements:',all_elements,'faces:',all_faces,'root_outliner_nodes:',all_outliner,'animations:',all_animations,'rough_json_string_nodes:',all_strings)
+              if bb:
+                  print('faces/model mean:',round(all_faces/len(bb),2),'median:',statistics.median(x[0] for x in bb))
+              print('Top 40 BBModels by faces:')
+              for faces,elems,size,strings,n in sorted(bb, reverse=True)[:40]:
+                  print(f'faces={faces:8d} elements={elems:7d} bytes={size:9d} strings~={strings:9d} {n}')
           PY
 
-      - name: Inspect class names and decompile model pipeline
+      - name: Decompile Decocraft model loading and baking pipeline
         shell: bash
         run: |
           set -euo pipefail
           JAR=payload/mods/decocraft-3.0.4-1.20.1-slim.jar
           mkdir -p /tmp/cfr /tmp/decomp
           curl -fsSL https://www.benf.org/other/cfr/cfr-0.152.jar -o /tmp/cfr/cfr.jar
-          echo '=== Relevant classes ==='
-          jar tf "$JAR" | grep '^com/razz/decocraft/.*\.class$' | grep -Ei '(model|json|render|item|client|block)' | sed 's#/#.#g;s#\.class$##' | head -n 300
-          echo
-          echo '=== Decompile selected classes ==='
           classes=(
-            com.razz.decocraft.common.JsonContainer
-            com.razz.decocraft.models.bbmodel.BBModel
+            com.razz.decocraft.models.bbmodel.BBModelLoader
+            com.razz.decocraft.models.bbmodel.BlockbenchBakery
+            com.razz.decocraft.models.bbmodel.BlockbenchLoader
+            com.razz.decocraft.models.bbmodel.BlockbenchModel
+            com.razz.decocraft.common.ModuleBlocks
+            com.razz.decocraft.common.ModuleItems
+            com.razz.decocraft.common.items.DecoBlockItem
+            com.razz.decocraft.client.ClientEvents
+            com.razz.decocraft.client.ClientHandler
+            com.razz.decocraft.client.render.DecoRender
             com.razz.decocraft.client.render.AnimatedRenderer
-            com.razz.decocraft.client.render.AnimatedModelRenderer
-            com.razz.decocraft.common.blocks.DecocraftBlock
           )
           for c in "${classes[@]}"; do
-            echo "--- $c ---"
+            echo "===== $c ====="
             java -jar /tmp/cfr/cfr.jar "$JAR" --outputdir /tmp/decomp --silent true --extraclasspath "$JAR" --jarfilter "${c##*.}" >/dev/null 2>&1 || true
             p="/tmp/decomp/${c//.//}.java"
             if [ -f "$p" ]; then
-              sed -n '1,260p' "$p"
+              sed -n '1,420p' "$p"
             else
-              javap -classpath "$JAR" -p -c "$c" 2>/dev/null | sed -n '1,320p' || true
+              javap -classpath "$JAR" -p -c "$c" 2>/dev/null | sed -n '1,500p' || true
             fi
           done
 
-      - name: Scan bytecode references to Minecraft model baking
+      - name: Scan class constants for model APIs
         shell: bash
         run: |
           set -euo pipefail
           JAR=payload/mods/decocraft-3.0.4-1.20.1-slim.jar
-          echo '=== Class constant-pool hits for model/bake APIs ==='
           tmp=$(mktemp -d)
           cd "$tmp"
           jar xf "$GITHUB_WORKSPACE/$JAR"
-          grep -aRIl -E 'BakedQuad|UnbakedModel|BakedModel|ModelResourceLocation|ModelBakery|ModelManager|BlockModel' com/razz/decocraft 2>/dev/null | head -n 150 | sed 's#/#.#g;s#\.class$##'
+          echo '=== model/bake constant-pool hits ==='
+          (grep -aRIl -E 'BakedQuad|UnbakedModel|BakedModel|ModelResourceLocation|ModelBakery|ModelManager|BlockModel|IGeometry|GeometryLoader|IUnbakedGeometry' com/razz/decocraft 2>/dev/null || true) | head -n 200 | sed 's#/#.#g;s#\.class$##'
