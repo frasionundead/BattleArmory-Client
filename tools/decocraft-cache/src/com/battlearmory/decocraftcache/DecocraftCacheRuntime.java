@@ -588,6 +588,24 @@ public final class DecocraftCacheRuntime {
         }
     }
 
+    /**
+     * Embeddium 0.3.31 reads BakedQuad.vertices directly from its BakedQuadMixin
+     * instead of calling BakedQuad.getVertices(). Route those reads through the
+     * patched getter so compressed quarter-turn variants materialize correctly.
+     */
+    public static int[] effectiveBakedQuadVertices(Object quad) {
+        if (quad == null) return null;
+        try {
+            ensureBakedQuadCompressionMethods(quad);
+            return (int[]) bakedQuadVerticesMethod.invoke(quad);
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getCause() == null ? e : e.getCause();
+            throw new RuntimeException("BakedQuad effective vertices failed", cause);
+        } catch (Throwable t) {
+            throw new RuntimeException("BakedQuad effective vertices failed", t);
+        }
+    }
+
     /** Called by the coremod-patched BakedQuad getter only for compressed variants. */
     public static int[] materializeRotatedVertices(int[] base, byte encodedPlan) {
         if (base == null) return null;

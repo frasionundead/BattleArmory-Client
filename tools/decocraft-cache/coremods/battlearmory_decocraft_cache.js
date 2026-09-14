@@ -603,6 +603,39 @@ function addBakedQuadRotationStorage(result) {
     };
 }
 
+function addEmbeddiumBakedQuadViewBridge(result) {
+    var mixinName = 'me.jellysquid.mods.sodium.mixin.core.model.quad.BakedQuadMixin';
+    result['battlearmory_embeddium_baked_quad_view_bridge'] = {
+        target: { type: 'CLASS', name: mixinName },
+        transformer: function(classNode) {
+            var patched = 0;
+            var methods = classNode.methods.iterator();
+            while (methods.hasNext()) {
+                var method = methods.next();
+                var insn = method.instructions.getFirst();
+                while (insn !== null) {
+                    var next = insn.getNext();
+                    if (insn.getOpcode() === Opcodes.GETFIELD && insn.desc === '[I') {
+                        var call = new MethodInsnNode(
+                            Opcodes.INVOKESTATIC,
+                            HELPER,
+                            'effectiveBakedQuadVertices',
+                            '(Ljava/lang/Object;)[I',
+                            false
+                        );
+                        method.instructions.set(insn, call);
+                        patched++;
+                    }
+                    insn = next;
+                }
+            }
+            if (patched === 0) throw 'Battle Armory Embeddium bridge: no int[] vertex field reads found';
+            ASMAPI.log('INFO', '[BattleArmory] Patched Embeddium BakedQuadMixin vertex reads: ' + patched);
+            return classNode;
+        }
+    };
+}
+
 function initializeCoreMod() {
     var result = {};
     for (var i = 0; i < FAMILIES.length; i++) {
@@ -611,6 +644,7 @@ function initializeCoreMod() {
         addWholeModelCache(result, FAMILIES[i]);
     }
     addBakedQuadRotationStorage(result);
+    addEmbeddiumBakedQuadViewBridge(result);
 
     // F3+T / resource-pack reload can temporarily coexist with the old model graph.
     // Clear Battle Armory's strong geometry/material references before Minecraft begins
