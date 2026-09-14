@@ -1,0 +1,34 @@
+name: Split helper for transfer
+on:
+  push:
+    paths:
+      - '.github/workflows/split-helper-transfer.yml'
+permissions:
+  contents: write
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Split base64 into small text chunks
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf _transfer
+          mkdir _transfer
+          python - <<'PY'
+          import base64
+          from pathlib import Path
+          data = Path('payload/mods/battlearmory-decocraft-cache-1.0.0.jar').read_bytes()
+          s = base64.b64encode(data).decode('ascii')
+          n = 4096
+          for i in range(0, len(s), n):
+              Path(f'_transfer/chunk{i//n:02d}.txt').write_text(s[i:i+n], encoding='ascii')
+          Path('_transfer/meta.txt').write_text(f'{len(data)}\n{len(s)}\n', encoding='ascii')
+          print('chunks', (len(s)+n-1)//n, 'bytes', len(data), 'b64', len(s))
+          PY
+          git config user.name 'battlearmory-bot'
+          git config user.email 'battlearmory-bot@users.noreply.github.com'
+          git add _transfer
+          git commit -m 'Stage helper transfer chunks'
+          git push
