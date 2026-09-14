@@ -1,0 +1,117 @@
+name: Publish Decocraft optimizer 1.7.4 reload eviction
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-decocraft-optimizer-174.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Patch 0020 optimizer for safe F3+T eviction
+        shell: bash
+        run: |
+          set -euxo pipefail
+          grep -n 'version="1.7.3"' tools/decocraft-cache/META-INF/mods.toml
+          python .github/scripts/patch-decocraft-174.py
+          grep -n 'prepareVanillaModelReload' tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          grep -n 'battlearmory_vanilla_model_reload_eviction' tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          grep -n 'version="1.7.4"' tools/decocraft-cache/META-INF/mods.toml
+
+      - name: Compile and package optimizer
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf build/decocraft174 dist
+          mkdir -p build/decocraft174/classes build/decocraft174/jar/META-INF build/decocraft174/jar/coremods dist
+          javac -source 17 -target 17 -d build/decocraft174/classes tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          cp -R build/decocraft174/classes/com build/decocraft174/jar/
+          cp tools/decocraft-cache/META-INF/mods.toml build/decocraft174/jar/META-INF/mods.toml
+          cp tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js build/decocraft174/jar/coremods/
+          OLD=payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          unzip -p "$OLD" META-INF/MANIFEST.MF > build/decocraft174/MANIFEST.MF
+          unzip -p "$OLD" META-INF/coremods.json > build/decocraft174/jar/META-INF/coremods.json
+          unzip -p "$OLD" pack.mcmeta > build/decocraft174/jar/pack.mcmeta
+          unzip -p "$OLD" battlearmory_translucent_materials.txt > build/decocraft174/jar/battlearmory_translucent_materials.txt
+          node --check tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          jar cfm dist/battlearmory-decocraft-cache-1.7.4.jar build/decocraft174/MANIFEST.MF -C build/decocraft174/jar .
+
+      - name: Static verification
+        shell: bash
+        run: |
+          set -euxo pipefail
+          JAR=dist/battlearmory-decocraft-cache-1.7.4.jar
+          test -s "$JAR"
+          javap -classpath "$JAR" com.battlearmory.decocraftcache.DecocraftCacheRuntime | grep -q 'prepareVanillaModelReload'
+          javap -classpath "$JAR" com.battlearmory.decocraftcache.DecocraftCacheRuntime | grep -q 'uncachedBakedQuad'
+          unzip -p "$JAR" META-INF/mods.toml | grep -q 'version="1.7.4"'
+          unzip -p "$JAR" coremods/battlearmory_decocraft_cache.js | grep -q 'battlearmory_vanilla_model_reload_eviction'
+          unzip -p "$JAR" coremods/battlearmory_decocraft_cache.js | grep -q 'battlearmory_embeddium_baked_quad_view_bridge'
+          if unzip -p "$JAR" coremods/battlearmory_decocraft_cache.js | grep -q 'battlearmory_embeddium_baked_quad_cache_compaction'; then
+            echo 'unsafe 0019 Embeddium compaction leaked into 1.7.4' >&2
+            exit 1
+          fi
+          sha256sum "$JAR"
+          wc -c < "$JAR"
+
+      - name: Publish payload and build 0021
+        shell: bash
+        run: |
+          set -euxo pipefail
+          JAR=dist/battlearmory-decocraft-cache-1.7.4.jar
+          DEST=payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          SHA="$(sha256sum "$JAR" | awk '{print $1}')"
+          SIZE="$(wc -c < "$JAR" | tr -d '[:space:]')"
+          cp "$JAR" "$DEST"
+          printf '%s\n' "$SHA" > "$DEST.sha256"
+          printf '%s\n' "$SIZE" > "$DEST.size"
+          SHA="$SHA" SIZE="$SIZE" python - <<'PY'
+          import json, os
+          from pathlib import Path
+          old=json.loads(Path('builds/0020.json').read_text())
+          old['build']=21
+          old['name']='Battle Armory Client 0021'
+          old['state']='staging'
+          for f in old['files']:
+              if f.get('path')=='mods/battlearmory-decocraft-cache-1.0.0.jar':
+                  f['size']=int(os.environ['SIZE'])
+                  f['sha256']=os.environ['SHA']
+                  break
+          else:
+              raise SystemExit('helper missing')
+          for c in old.get('components',[]):
+              if c.get('id')=='decocraft_render_cache':
+                  c['notes']=('v1.7.4 reload eviction: keeps the proven 0020 render/memory path unchanged. At ModelManager.reload start it drops the previous bakedRegistry, BlockModelShaper and ItemModelShaper baked-model caches plus the previous ModelBakery, then requests GC before the replacement model graph is baked. Compatibility failures log and fall back instead of aborting reload.')
+          Path('builds/0021.json').write_text(json.dumps(old,indent=2)+'\n')
+          stable=json.loads(Path('stable.json').read_text())
+          stable['build']=21
+          stable['build_manifest']='builds/0021.json'
+          stable['status']='staging'
+          Path('stable.json').write_text(json.dumps(stable,indent=2)+'\n')
+          PY
+          python -m json.tool builds/0021.json >/dev/null
+          python -m json.tool stable.json >/dev/null
+          git config user.name battlearmory-bot
+          git config user.email battlearmory-bot@users.noreply.github.com
+          git add \
+            tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java \
+            tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js \
+            tools/decocraft-cache/META-INF/mods.toml \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar.sha256 \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar.size \
+            builds/0021.json stable.json
+          git commit -m 'Publish Decocraft optimizer 1.7.4 reload eviction as build 0021'
+          git push
