@@ -1,0 +1,45 @@
+name: Inspect render hotspots
+on:
+  push:
+    paths:
+      - '.github/workflows/inspect-render-hotspots.yml'
+permissions:
+  contents: write
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Inspect jars
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf _inspect
+          mkdir -p _inspect
+          H='payload/mods/battlearmory-decocraft-cache-1.0.0.jar'
+          N='payload/mods/decocraft_nature-1.0.4-1.20.1.jar'
+          A='payload/mods/another_furniture-forge-1.20.1-3.0.4.jar'
+          D='payload/mods/decocraft-3.0.4-1.20.1-slim.jar'
+          unzip -p "$H" coremods/battlearmory_decocraft_cache.js > _inspect/helper-coremod.js
+          unzip -p "$H" META-INF/mods.toml > _inspect/helper-mods.toml
+          (javap -classpath "$H" -p -c -s com.battlearmory.decocraftcache.DecocraftCacheRuntime || true) > _inspect/helper-runtime.javap.txt
+          (jar tf "$N" | grep -E 'com/razz/decocraft_nature/client/render/(AnimatedRenderer|AnimatedModelRenderer).*class' || true) > _inspect/nature-classes.txt
+          (javap -classpath "$N" -p -c -s com.razz.decocraft_nature.client.render.AnimatedRenderer || true) > _inspect/nature-AnimatedRenderer.javap.txt
+          (javap -classpath "$N" -p -c -s com.razz.decocraft_nature.client.render.AnimatedModelRenderer || true) > _inspect/nature-AnimatedModelRenderer.javap.txt
+          (jar tf "$A" | grep -E 'ServiceBellButtonRenderer|blockentity' | head -200 || true) > _inspect/another-classes.txt
+          (javap -classpath "$A" -p -c -s com.starfish_studios.another_furniture.client.renderer.blockentity.ServiceBellButtonRenderer || true) > _inspect/another-ServiceBellButtonRenderer.javap.txt
+          (javap -classpath "$D" -p -c -s com.razz.decocraft.client.render.AnimatedRenderer || true) > _inspect/decocraft-AnimatedRenderer.javap.txt
+          (javap -classpath "$D" -p -c -s com.razz.decocraft.client.render.AnimatedModelRenderer || true) > _inspect/decocraft-AnimatedModelRenderer.javap.txt
+      - name: Commit inspection
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name 'battlearmory-bot'
+          git config user.email 'battlearmory-bot@users.noreply.github.com'
+          git add _inspect
+          git commit -m 'Inspect render allocation hotspots'
+          git push
