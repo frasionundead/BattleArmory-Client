@@ -1,0 +1,122 @@
+name: Publish Decocraft optimizer 1.4.1 bake attribution diagnostics
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-decocraft-optimizer-141.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Add bake attribution diagnostics
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python .github/scripts/patch-decocraft-141.py
+          grep -n 'recordBakeCall' tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          grep -n 'battlearmory-bake-stats.txt' tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          grep -n "'recordBakeCall'" tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          grep -n 'version="1.4.1"' tools/decocraft-cache/META-INF/mods.toml
+
+      - name: Compile and package optimizer
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf build/decocraft141 dist
+          mkdir -p build/decocraft141/classes build/decocraft141/jar/META-INF build/decocraft141/jar/coremods dist
+          javac -source 17 -target 17 \
+            -d build/decocraft141/classes \
+            tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          cp -R build/decocraft141/classes/com build/decocraft141/jar/
+          cp tools/decocraft-cache/META-INF/mods.toml build/decocraft141/jar/META-INF/mods.toml
+          cp tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js build/decocraft141/jar/coremods/
+          OLD=payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          unzip -p "$OLD" META-INF/MANIFEST.MF > build/decocraft141/MANIFEST.MF
+          unzip -p "$OLD" META-INF/coremods.json > build/decocraft141/jar/META-INF/coremods.json
+          unzip -p "$OLD" pack.mcmeta > build/decocraft141/jar/pack.mcmeta
+          unzip -p "$OLD" battlearmory_translucent_materials.txt > build/decocraft141/jar/battlearmory_translucent_materials.txt
+          node --check tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          jar cfm dist/battlearmory-decocraft-cache-1.4.1.jar build/decocraft141/MANIFEST.MF -C build/decocraft141/jar .
+
+      - name: Static verification
+        shell: bash
+        run: |
+          set -euxo pipefail
+          JAR=dist/battlearmory-decocraft-cache-1.4.1.jar
+          test -s "$JAR"
+          jar tf "$JAR" | grep -q '^META-INF/coremods.json$'
+          jar tf "$JAR" | grep -q '^coremods/battlearmory_decocraft_cache.js$'
+          javap -classpath "$JAR" com.battlearmory.decocraftcache.DecocraftCacheRuntime | grep -q 'recordBakeCall'
+          javap -classpath "$JAR" com.battlearmory.decocraftcache.DecocraftCacheRuntime | grep -q 'canonicalBakedQuad'
+          unzip -p "$JAR" META-INF/mods.toml | grep -q 'version="1.4.1"'
+          unzip -p "$JAR" coremods/battlearmory_decocraft_cache.js | grep -q 'recordBakeCall'
+          sha256sum "$JAR"
+          wc -c < "$JAR"
+
+      - name: Publish payload and build 0013
+        shell: bash
+        run: |
+          set -euxo pipefail
+          JAR=dist/battlearmory-decocraft-cache-1.4.1.jar
+          DEST=payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          SHA="$(sha256sum "$JAR" | awk '{print $1}')"
+          SIZE="$(wc -c < "$JAR" | tr -d '[:space:]')"
+          cp "$JAR" "$DEST"
+          printf '%s\n' "$SHA" > "$DEST.sha256"
+          printf '%s\n' "$SIZE" > "$DEST.size"
+
+          SHA="$SHA" SIZE="$SIZE" python - <<'PY'
+          import json, os
+          from pathlib import Path
+          old = json.loads(Path('builds/0012.json').read_text(encoding='utf-8'))
+          old['build'] = 13
+          old['name'] = 'Battle Armory Client 0013'
+          old['state'] = 'staging'
+          found = False
+          for f in old.get('files', []):
+              if f.get('path') == 'mods/battlearmory-decocraft-cache-1.0.0.jar':
+                  f['size'] = int(os.environ['SIZE'])
+                  f['sha256'] = os.environ['SHA']
+                  found = True
+          if not found:
+              raise SystemExit('helper entry missing from build 0012')
+          for c in old.get('components', []):
+              if c.get('id') == 'decocraft_render_cache':
+                  c['notes'] = ('v1.4.1 diagnostic build: keeps v1.4.0 quad interning and records Decocraft vs '
+                                'Decocraft Nature bake-call counts plus interner unique/hit/miss totals. A temporary '
+                                'battlearmory-bake-stats.txt snapshot is written in the client working directory after startup.')
+          Path('builds/0013.json').write_text(json.dumps(old, indent=2) + '\n', encoding='utf-8')
+          stable = json.loads(Path('stable.json').read_text(encoding='utf-8'))
+          stable['build'] = 13
+          stable['build_manifest'] = 'builds/0013.json'
+          stable['status'] = 'staging'
+          Path('stable.json').write_text(json.dumps(stable, indent=2) + '\n', encoding='utf-8')
+          PY
+
+          python -m json.tool builds/0013.json >/dev/null
+          python -m json.tool stable.json >/dev/null
+          git config user.name 'battlearmory-bot'
+          git config user.email 'battlearmory-bot@users.noreply.github.com'
+          git add \
+            tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java \
+            tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js \
+            tools/decocraft-cache/META-INF/mods.toml \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar.sha256 \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar.size \
+            builds/0013.json stable.json
+          git commit -m 'Publish Decocraft bake diagnostics 1.4.1 as build 0013'
+          git push
