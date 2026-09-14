@@ -390,6 +390,20 @@ public final class DecocraftCacheRuntime {
      * subsequent builders.  The cache is cleared on resource reload.
      */
     @SuppressWarnings({"rawtypes", "unchecked"})
+    /**
+     * Decocraft/Nature placed furniture is rendered by its BlockEntity renderer.
+     * The startup model bakery nevertheless bakes every four-way blockstate variant,
+     * retaining millions of duplicate BakedQuad/int[] objects that are not needed for
+     * the placed-world render path. Preserve the inventory model path defensively.
+     */
+    public static boolean shouldElideBlockstateBake(Object modelLocation) {
+        if (modelLocation == null) return false;
+        String location = String.valueOf(modelLocation);
+        if (location.contains("#inventory")) return false;
+        if (location.contains(":item/") || location.startsWith("item/")) return false;
+        return true;
+    }
+
     public static void addQuadsCached(String family, Object model, Object context, Object builder,
                                       Object modelBaker, Object spriteGetter, Object modelState,
                                       Object outerLocation) {

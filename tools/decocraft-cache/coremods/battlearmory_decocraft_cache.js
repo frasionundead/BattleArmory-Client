@@ -461,10 +461,10 @@ function addQuadDedupe(result, f) {
     };
 }
 
-function addWholeModelCache(result, f) {
+function addBlockstateBakeElision(result, f) {
     var slash = f.geometryLoader.lastIndexOf('/');
     var modelClass = f.geometryLoader.substring(0, slash + 1) + 'BlockbenchModel';
-    result['battlearmory_' + f.id + '_whole_model_cache'] = {
+    result['battlearmory_' + f.id + '_blockstate_bake_elision'] = {
         target: { type: 'CLASS', name: dotted(modelClass) },
         transformer: function(classNode) {
             var methods = classNode.methods.iterator();
@@ -476,28 +476,21 @@ function addWholeModelCache(result, f) {
                     break;
                 }
             }
-            if (method === null) throw 'Battle Armory ' + f.id + ' whole-model cache: addQuads not found';
+            if (method === null) throw 'Battle Armory ' + f.id + ' blockstate bake elision: addQuads not found';
 
-            method.instructions.clear();
-            method.tryCatchBlocks.clear();
-            if (method.localVariables !== null) method.localVariables.clear();
-            var code = new InsnList();
-            code.add(new LdcInsnNode(f.id));
-            code.add(new VarInsnNode(Opcodes.ALOAD, 0));
-            code.add(new VarInsnNode(Opcodes.ALOAD, 1));
-            code.add(new VarInsnNode(Opcodes.ALOAD, 2));
-            code.add(new VarInsnNode(Opcodes.ALOAD, 3));
-            code.add(new VarInsnNode(Opcodes.ALOAD, 4));
-            code.add(new VarInsnNode(Opcodes.ALOAD, 5));
-            code.add(new VarInsnNode(Opcodes.ALOAD, 6));
-            code.add(new MethodInsnNode(
-                Opcodes.INVOKESTATIC, HELPER, 'addQuadsCached',
-                '(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V',
-                false));
-            code.add(new InsnNode(Opcodes.RETURN));
-            method.instructions.add(code);
-            method.maxStack = 8;
-            method.maxLocals = 7;
+            var first = method.instructions.getFirst();
+            if (first === null) throw 'Battle Armory ' + f.id + ' blockstate bake elision: empty addQuads';
+            var keep = new LabelNode();
+            var guard = new InsnList();
+            guard.add(new VarInsnNode(Opcodes.ALOAD, 6));
+            guard.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC, HELPER, 'shouldElideBlockstateBake',
+                '(Ljava/lang/Object;)Z', false));
+            guard.add(new JumpInsnNode(Opcodes.IFEQ, keep));
+            guard.add(new InsnNode(Opcodes.RETURN));
+            guard.add(keep);
+            method.instructions.insertBefore(first, guard);
+            method.maxStack = Math.max(method.maxStack, 1);
             return classNode;
         }
     };
@@ -508,7 +501,7 @@ function initializeCoreMod() {
     for (var i = 0; i < FAMILIES.length; i++) {
         addFamily(result, FAMILIES[i]);
         addMemoryDedupe(result, FAMILIES[i]);
-        addWholeModelCache(result, FAMILIES[i]);
+        addBlockstateBakeElision(result, FAMILIES[i]);
     }
 
     // F3+T / resource-pack reload can temporarily coexist with the old model graph.
