@@ -1,0 +1,37 @@
+name: Inspect Decocraft model bake pipeline
+on:
+  push:
+    paths:
+      - '.github/workflows/inspect-decocraft-model-bake.yml'
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Inspect model bake pipeline
+        shell: bash
+        run: |
+          set -euo pipefail
+          for spec in \
+            'payload/mods/decocraft-3.0.4-1.20.1-slim.jar|com.razz.decocraft.models.bbmodel' \
+            'payload/mods/decocraft_nature-1.0.4-1.20.1.jar|com.razz.decocraft_nature.models.bbmodel'; do
+            IFS='|' read -r jar pkg <<< "$spec"
+            echo "===== $jar classes ====="
+            jar tf "$jar" | grep "${pkg//./\/}/" | grep -E 'Blockbench|Baked|Model' | head -n 200
+            for cls in \
+              "$pkg.BlockbenchLoader" \
+              "$pkg.BlockbenchLoader\$BlockbenchModel" \
+              "$pkg.BlockbenchModel" \
+              "$pkg.BBModel"; do
+              echo "===== $cls signatures ====="
+              javap -classpath "$jar" -p -s "$cls" 2>/dev/null || true
+              echo "===== $cls bytecode ====="
+              javap -classpath "$jar" -p -c "$cls" 2>/dev/null | sed -n '/ bake(/,/^  [^ ]/p' | head -n 500 || true
+            done
+          done
