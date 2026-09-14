@@ -3,15 +3,19 @@ package com.battlearmory.decocraftcache;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
@@ -21,12 +25,23 @@ public final class DecocraftCacheRuntime {
     private static final String ALPHA_RESOURCE = "battlearmory_translucent_materials.txt";
 
     private static final Map<String, FamilyState> FAMILIES = new HashMap<>();
-    private static final Set<String> TRANSLUCENT_MATERIALS = new HashSet<>();
     private static final boolean ALPHA_LIST_LOADED;
 
-    private static volatile Method cutoutMethod;
-    private static volatile Method translucentMethod;
+    private static volatile MethodHandle cutoutHandle;
+    private static volatile MethodHandle translucentHandle;
     private static volatile boolean renderTypesInitialized;
+
+    private static volatile Constructor<?> resourceLocationCtor;
+    private static volatile Constructor<?> materialCtor;
+    private static volatile Object blockAtlas;
+    private static volatile boolean materialsInitialized;
+
+    private static volatile Constructor<?> quaternionCtor;
+    private static volatile MethodHandle facingYawHandle;
+    private static volatile Object x180Quaternion;
+    private static volatile Object z180Quaternion;
+    private static volatile boolean quaternionInitialized;
+    private static final IdentityHashMap<Object, Object> FACING_QUATERNIONS = new IdentityHashMap<>();
 
     private static final Function<Object, Object> CUTOUT_FN = atlas -> invokeRenderType(false, atlas);
     private static final Function<Object, Object> TRANSLUCENT_FN = atlas -> invokeRenderType(true, atlas);
@@ -52,18 +67,22 @@ public final class DecocraftCacheRuntime {
         }
         try {
             ensureInitialized(state, renderer, tileEntity);
+            Object raw = state.getKeyframesHandle.invoke(tileEntity);
+            Map<?, ?> keyframes = raw instanceof Map ? (Map<?, ?>) raw : java.util.Collections.emptyMap();
+
             Object cached = state.modelCache.get(model);
-            if (cached == null) {
+            NodeState[] nodes = state.nodesByModel.get(model);
+            if (cached == null || nodes == null) {
                 if (state.modelCache.size() >= MAX_MODELS) {
                     state.modelCache.clear();
-                    state.baseTransforms.clear();
+                    state.nodesByModel.clear();
                 }
                 cached = invokeBuild(state, renderer, meta, model, tileEntity);
+                nodes = flattenModel(state, cached, keyframes);
                 state.modelCache.put(model, cached);
+                state.nodesByModel.put(model, nodes);
             }
-            Object raw = state.getKeyframesMethod.invoke(tileEntity);
-            Map<?, ?> keyframes = raw instanceof Map ? (Map<?, ?>) raw : Collections.emptyMap();
-            applyKeyframes(state, cached, keyframes);
+            applyKeyframes(state, nodes, keyframes);
             return cached;
         } catch (Throwable t) {
             disable(state, t);
@@ -71,19 +90,66 @@ public final class DecocraftCacheRuntime {
         }
     }
 
-    /**
-     * Called from both Decocraft renderers instead of their hard-coded
-     * RenderType::entityTranslucent method reference. Binary-alpha/opaque textures
-     * use entityCutoutNoCull, while textures containing partial alpha retain
-     * entityTranslucent and therefore visual blending.
-     */
     @SuppressWarnings({"rawtypes", "unchecked"})
     public static Function renderTypeFunction(String namespace, String material) {
         if (!ALPHA_LIST_LOADED || namespace == null || material == null) {
             return TRANSLUCENT_FN;
         }
-        String key = namespace + ":block/" + material;
-        return TRANSLUCENT_MATERIALS.contains(key) ? TRANSLUCENT_FN : CUTOUT_FN;
+        FamilyState state = FAMILIES.get(namespace);
+        if (state == null) return TRANSLUCENT_FN;
+        return state.translucentMaterials.contains(material) ? TRANSLUCENT_FN : CUTOUT_FN;
+    }
+
+    /** Returns a cached Material instance for the Decocraft texture name. */
+    public static Object material(String namespace, String material) {
+        if (namespace == null || material == null) throw new IllegalArgumentException("namespace/material");
+        FamilyState state = FAMILIES.get(namespace);
+        if (state == null) throw new IllegalArgumentException("Unknown Decocraft family: " + namespace);
+        Object cached = state.materialCache.get(material);
+        if (cached != null) return cached;
+        try {
+            ensureMaterials();
+            Object texture = resourceLocationCtor.newInstance(namespace, "block/" + material);
+            cached = materialCtor.newInstance(blockAtlas, texture);
+            state.materialCache.put(material, cached);
+            return cached;
+        } catch (Throwable t) {
+            throw new RuntimeException("Battle Armory material cache failed for " + namespace + ":" + material, t);
+        }
+    }
+
+    /** Cached equivalent of Decocraft's per-frame facing quaternion allocation. */
+    public static Object facingQuaternion(Object facing) {
+        if (facing == null) throw new IllegalArgumentException("facing");
+        Object cached = FACING_QUATERNIONS.get(facing);
+        if (cached != null) return cached;
+        try {
+            ensureQuaternionSupport(facing);
+            float degrees = ((Number) facingYawHandle.invoke(facing)).floatValue();
+            cached = newAxisQuaternion(0.0f, -1.0f, 0.0f, degrees);
+            FACING_QUATERNIONS.put(facing, cached);
+            return cached;
+        } catch (Throwable t) {
+            throw new RuntimeException("Battle Armory facing quaternion cache failed", t);
+        }
+    }
+
+    public static Object x180Quaternion() {
+        try {
+            ensureQuaternionSupport(null);
+            return x180Quaternion;
+        } catch (Throwable t) {
+            throw new RuntimeException("Battle Armory X quaternion cache failed", t);
+        }
+    }
+
+    public static Object z180Quaternion() {
+        try {
+            ensureQuaternionSupport(null);
+            return z180Quaternion;
+        } catch (Throwable t) {
+            throw new RuntimeException("Battle Armory Z quaternion cache failed", t);
+        }
     }
 
     private static FamilyState stateForRenderer(Object renderer) {
@@ -110,8 +176,9 @@ public final class DecocraftCacheRuntime {
                 throw new NoSuchMethodException(state.id + " AnimatedRenderer.ba$buildModel");
             }
 
-            state.getKeyframesMethod = tileEntity.getClass().getMethod("getKeyframes");
-            state.getKeyframesMethod.setAccessible(true);
+            Method getKeyframes = tileEntity.getClass().getMethod("getKeyframes");
+            getKeyframes.setAccessible(true);
+            state.getKeyframesHandle = MethodHandles.lookup().unreflect(getKeyframes);
 
             ClassLoader loader = renderer.getClass().getClassLoader();
             state.nodeClass = Class.forName(state.nodeClassName, false, loader);
@@ -178,49 +245,68 @@ public final class DecocraftCacheRuntime {
         }
     }
 
-    private static void applyKeyframes(FamilyState state, Object node, Map<?, ?> keyframes) throws Exception {
-        if (!state.nodeClass.isInstance(node)) return;
+    private static NodeState[] flattenModel(FamilyState state, Object root, Map<?, ?> keyframes) throws Exception {
+        List<NodeState> nodes = new ArrayList<>();
+        collectNodes(state, root, keyframes, nodes);
+        return nodes.toArray(new NodeState[0]);
+    }
 
+    private static void collectNodes(FamilyState state, Object node, Map<?, ?> keyframes, List<NodeState> out) throws Exception {
+        if (!state.nodeClass.isInstance(node)) return;
         Object uuid = state.uuidField.get(node);
+        float px = 0.0f, py = 0.0f, pz = 0.0f, rx = 0.0f, ry = 0.0f, rz = 0.0f;
         if (uuid != null) {
             Object rawChannels = keyframes.get(uuid);
             Map<?, ?> channels = rawChannels instanceof Map ? (Map<?, ?>) rawChannels : null;
             float[] position = channels == null ? null : asFloatArray(channels.get(state.positionChannel));
             float[] rotation = channels == null ? null : asFloatArray(channels.get(state.rotationChannel));
-
-            float px = value(position, 0);
-            float py = value(position, 1);
-            float pz = value(position, 2);
-            float rx = value(rotation, 0);
-            float ry = value(rotation, 1);
-            float rz = value(rotation, 2);
-
-            float[] base = state.baseTransforms.get(node);
-            if (base == null) {
-                base = new float[] {
-                        state.xField.getFloat(node) + px,
-                        state.yField.getFloat(node) - py,
-                        state.zField.getFloat(node) - pz,
-                        state.rxField.getFloat(node) + rx,
-                        state.ryField.getFloat(node) + ry,
-                        state.rzField.getFloat(node) - rz
-                };
-                state.baseTransforms.put(node, base);
-            }
-
-            state.xField.setFloat(node, base[0] - px);
-            state.yField.setFloat(node, base[1] + py);
-            state.zField.setFloat(node, base[2] + pz);
-            state.rxField.setFloat(node, base[3] - rx);
-            state.ryField.setFloat(node, base[4] - ry);
-            state.rzField.setFloat(node, base[5] + rz);
+            px = value(position, 0);
+            py = value(position, 1);
+            pz = value(position, 2);
+            rx = value(rotation, 0);
+            ry = value(rotation, 1);
+            rz = value(rotation, 2);
         }
+        out.add(new NodeState(
+                node,
+                uuid,
+                state.xField.getFloat(node) + px,
+                state.yField.getFloat(node) - py,
+                state.zField.getFloat(node) - pz,
+                state.rxField.getFloat(node) + rx,
+                state.ryField.getFloat(node) + ry,
+                state.rzField.getFloat(node) - rz));
 
         Object rawChildren = state.childrenField.get(node);
         if (rawChildren instanceof Map) {
             for (Object child : ((Map<?, ?>) rawChildren).values()) {
-                if (state.nodeClass.isInstance(child)) applyKeyframes(state, child, keyframes);
+                if (state.nodeClass.isInstance(child)) collectNodes(state, child, keyframes, out);
             }
+        }
+    }
+
+    private static void applyKeyframes(FamilyState state, NodeState[] nodes, Map<?, ?> keyframes) throws Exception {
+        for (int i = 0; i < nodes.length; i++) {
+            NodeState n = nodes[i];
+            float px = 0.0f, py = 0.0f, pz = 0.0f, rx = 0.0f, ry = 0.0f, rz = 0.0f;
+            if (n.uuid != null) {
+                Object rawChannels = keyframes.get(n.uuid);
+                Map<?, ?> channels = rawChannels instanceof Map ? (Map<?, ?>) rawChannels : null;
+                float[] position = channels == null ? null : asFloatArray(channels.get(state.positionChannel));
+                float[] rotation = channels == null ? null : asFloatArray(channels.get(state.rotationChannel));
+                px = value(position, 0);
+                py = value(position, 1);
+                pz = value(position, 2);
+                rx = value(rotation, 0);
+                ry = value(rotation, 1);
+                rz = value(rotation, 2);
+            }
+            state.xField.setFloat(n.node, n.x - px);
+            state.yField.setFloat(n.node, n.y + py);
+            state.zField.setFloat(n.node, n.z + pz);
+            state.rxField.setFloat(n.node, n.rx - rx);
+            state.ryField.setFloat(n.node, n.ry - ry);
+            state.rzField.setFloat(n.node, n.rz + rz);
         }
     }
 
@@ -235,7 +321,7 @@ public final class DecocraftCacheRuntime {
     private static void disable(FamilyState state, Throwable t) {
         state.disabled = true;
         state.modelCache.clear();
-        state.baseTransforms.clear();
+        state.nodesByModel.clear();
         if (!state.warned) {
             state.warned = true;
             System.err.println("[BattleArmory] " + state.id + " geometry cache disabled; falling back to stock renderer: " + t);
@@ -249,18 +335,28 @@ public final class DecocraftCacheRuntime {
                 System.err.println("[BattleArmory] Translucent material list missing; keeping stock translucent rendering.");
                 return false;
             }
+            int count = 0;
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     line = line.trim();
-                    if (!line.isEmpty() && !line.startsWith("#")) TRANSLUCENT_MATERIALS.add(line);
+                    if (line.isEmpty() || line.startsWith("#")) continue;
+                    int colon = line.indexOf(':');
+                    if (colon <= 0) continue;
+                    String namespace = line.substring(0, colon);
+                    String prefix = "block/";
+                    String path = line.substring(colon + 1);
+                    if (!path.startsWith(prefix)) continue;
+                    FamilyState state = FAMILIES.get(namespace);
+                    if (state == null) continue;
+                    if (state.translucentMaterials.add(path.substring(prefix.length()))) count++;
                 }
             }
-            System.out.println("[BattleArmory] Loaded " + TRANSLUCENT_MATERIALS.size() + " partially-transparent Decocraft materials; other materials use cutout rendering.");
+            System.out.println("[BattleArmory] Loaded " + count + " partially-transparent Decocraft materials; other materials use cutout rendering.");
             return true;
         } catch (Throwable t) {
             System.err.println("[BattleArmory] Failed to load translucent material list; keeping stock translucent rendering: " + t);
-            TRANSLUCENT_MATERIALS.clear();
+            for (FamilyState state : FAMILIES.values()) state.translucentMaterials.clear();
             return false;
         }
     }
@@ -268,10 +364,10 @@ public final class DecocraftCacheRuntime {
     private static Object invokeRenderType(boolean translucent, Object atlas) {
         try {
             ensureRenderTypes(atlas.getClass().getClassLoader());
-            Method method = translucent ? translucentMethod : cutoutMethod;
-            if (method == null && !translucent) method = translucentMethod;
-            if (method == null) throw new NoSuchMethodException("RenderType method unavailable");
-            return method.invoke(null, atlas);
+            MethodHandle handle = translucent ? translucentHandle : cutoutHandle;
+            if (handle == null && !translucent) handle = translucentHandle;
+            if (handle == null) throw new NoSuchMethodException("RenderType method unavailable");
+            return handle.invoke(atlas);
         } catch (Throwable t) {
             throw new RuntimeException("Battle Armory render-type selection failed", t);
         }
@@ -289,15 +385,90 @@ public final class DecocraftCacheRuntime {
                 String name = method.getName();
                 if (name.equals("m_110458_") || name.equals("entityCutoutNoCull")) {
                     method.setAccessible(true);
-                    cutoutMethod = method;
+                    cutoutHandle = MethodHandles.lookup().unreflect(method);
                 } else if (name.equals("m_110473_") || name.equals("entityTranslucent")) {
                     method.setAccessible(true);
-                    translucentMethod = method;
+                    translucentHandle = MethodHandles.lookup().unreflect(method);
                 }
             }
-            if (translucentMethod == null) throw new NoSuchMethodException("RenderType.entityTranslucent/m_110473_");
-            if (cutoutMethod == null) throw new NoSuchMethodException("RenderType.entityCutoutNoCull/m_110458_");
+            if (translucentHandle == null) throw new NoSuchMethodException("RenderType.entityTranslucent/m_110473_");
+            if (cutoutHandle == null) throw new NoSuchMethodException("RenderType.entityCutoutNoCull/m_110458_");
             renderTypesInitialized = true;
+        }
+    }
+
+    private static void ensureMaterials() throws Exception {
+        if (materialsInitialized) return;
+        synchronized (DecocraftCacheRuntime.class) {
+            if (materialsInitialized) return;
+            ClassLoader loader = Thread.currentThread().getContextClassLoader();
+            Class<?> rl = Class.forName("net.minecraft.resources.ResourceLocation", false, loader);
+            Class<?> material = Class.forName("net.minecraft.client.resources.model.Material", false, loader);
+            Class<?> atlas = Class.forName("net.minecraft.client.renderer.texture.TextureAtlas", false, loader);
+            resourceLocationCtor = rl.getConstructor(String.class, String.class);
+            materialCtor = material.getConstructor(rl, rl);
+            Field atlasField;
+            try {
+                atlasField = atlas.getDeclaredField("f_118259_");
+            } catch (NoSuchFieldException e) {
+                atlasField = atlas.getDeclaredField("LOCATION_BLOCKS");
+            }
+            atlasField.setAccessible(true);
+            blockAtlas = atlasField.get(null);
+            materialsInitialized = true;
+        }
+    }
+
+    private static void ensureQuaternionSupport(Object facing) throws Exception {
+        if (!quaternionInitialized) {
+            synchronized (DecocraftCacheRuntime.class) {
+                if (!quaternionInitialized) {
+                    ClassLoader loader = Thread.currentThread().getContextClassLoader();
+                    Class<?> quaternion = Class.forName("org.joml.Quaternionf", false, loader);
+                    quaternionCtor = quaternion.getConstructor(float.class, float.class, float.class, float.class);
+                    x180Quaternion = newAxisQuaternion(-1.0f, 0.0f, 0.0f, 180.0f);
+                    z180Quaternion = newAxisQuaternion(0.0f, 0.0f, -1.0f, 180.0f);
+                    quaternionInitialized = true;
+                }
+            }
+        }
+        if (facing != null && facingYawHandle == null) {
+            synchronized (DecocraftCacheRuntime.class) {
+                if (facingYawHandle == null) {
+                    Method method;
+                    try {
+                        method = facing.getClass().getMethod("m_122435_");
+                    } catch (NoSuchMethodException e) {
+                        method = facing.getClass().getMethod("toYRot");
+                    }
+                    method.setAccessible(true);
+                    facingYawHandle = MethodHandles.lookup().unreflect(method);
+                }
+            }
+        }
+    }
+
+    private static Object newAxisQuaternion(float ax, float ay, float az, float degrees) throws Exception {
+        float half = (float) Math.toRadians(degrees) * 0.5f;
+        float s = (float) Math.sin(half);
+        float c = (float) Math.cos(half);
+        return quaternionCtor.newInstance(ax * s, ay * s, az * s, c);
+    }
+
+    private static final class NodeState {
+        final Object node;
+        final Object uuid;
+        final float x, y, z, rx, ry, rz;
+
+        NodeState(Object node, Object uuid, float x, float y, float z, float rx, float ry, float rz) {
+            this.node = node;
+            this.uuid = uuid;
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.rx = rx;
+            this.ry = ry;
+            this.rz = rz;
         }
     }
 
@@ -306,12 +477,14 @@ public final class DecocraftCacheRuntime {
         final String nodeClassName;
         final String channelClassName;
         final IdentityHashMap<Object, Object> modelCache = new IdentityHashMap<>();
-        final IdentityHashMap<Object, float[]> baseTransforms = new IdentityHashMap<>();
+        final IdentityHashMap<Object, NodeState[]> nodesByModel = new IdentityHashMap<>();
+        final Map<String, Object> materialCache = new HashMap<>();
+        final Set<String> translucentMaterials = new HashSet<>();
         volatile boolean initialized;
         volatile boolean disabled;
         volatile boolean warned;
         Method buildModelMethod;
-        Method getKeyframesMethod;
+        MethodHandle getKeyframesHandle;
         Class<?> nodeClass;
         Field uuidField;
         Field xField;
