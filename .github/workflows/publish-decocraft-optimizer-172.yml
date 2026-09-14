@@ -3,6 +3,7 @@ on:
   push:
     paths:
       - '.github/workflows/publish-decocraft-optimizer-172.yml'
+      - '.github/scripts/patch-decocraft-172.py'
   workflow_dispatch:
 
 permissions:
