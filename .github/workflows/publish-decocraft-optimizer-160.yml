@@ -1,0 +1,154 @@
+name: Publish Decocraft optimizer 1.6.0 blockstate bake elision
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-decocraft-optimizer-160.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Add blockstate bake elision
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python .github/scripts/patch-decocraft-160.py
+          grep -n 'shouldElideBlockstateBake' tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          grep -n 'blockstate_bake_elision' tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          grep -n 'addBlockstateBakeElision(result, FAMILIES\[i\])' tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          grep -n 'version="1.6.0"' tools/decocraft-cache/META-INF/mods.toml
+
+      - name: Verify Decocraft bake topology assumption
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python - <<'PY'
+          import json, zipfile
+          total_refs = 0
+          for jar in ['payload/mods/decocraft-3.0.4-1.20.1-slim.jar','payload/mods/decocraft_nature-1.0.4-1.20.1.jar']:
+              refs = 0
+              with zipfile.ZipFile(jar) as z:
+                  for n in z.namelist():
+                      if '/blockstates/' not in n or not n.endswith('.json'): continue
+                      try: obj=json.loads(z.read(n))
+                      except Exception: continue
+                      def walk(x):
+                          nonlocal_ref = [0]
+                          if isinstance(x,dict):
+                              if isinstance(x.get('model'),str): nonlocal_ref[0]+=1
+                              for v in x.values(): nonlocal_ref[0]+=walk(v)
+                          elif isinstance(x,list):
+                              for v in x: nonlocal_ref[0]+=walk(v)
+                          return nonlocal_ref[0]
+                      refs += walk(obj)
+              print(jar, 'blockstate_model_refs=', refs)
+              total_refs += refs
+          print('total_blockstate_model_refs=', total_refs)
+          if total_refs != 18404:
+              raise SystemExit(f'unexpected blockstate ref total {total_refs}, expected 18404')
+          PY
+
+      - name: Compile and package optimizer
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf build/decocraft160 dist
+          mkdir -p build/decocraft160/classes build/decocraft160/jar/META-INF build/decocraft160/jar/coremods dist
+          javac -source 17 -target 17 \
+            -d build/decocraft160/classes \
+            tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          cp -R build/decocraft160/classes/com build/decocraft160/jar/
+          cp tools/decocraft-cache/META-INF/mods.toml build/decocraft160/jar/META-INF/mods.toml
+          cp tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js build/decocraft160/jar/coremods/
+          OLD=payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          unzip -p "$OLD" META-INF/MANIFEST.MF > build/decocraft160/MANIFEST.MF
+          unzip -p "$OLD" META-INF/coremods.json > build/decocraft160/jar/META-INF/coremods.json
+          unzip -p "$OLD" pack.mcmeta > build/decocraft160/jar/pack.mcmeta
+          unzip -p "$OLD" battlearmory_translucent_materials.txt > build/decocraft160/jar/battlearmory_translucent_materials.txt
+          node --check tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          jar cfm dist/battlearmory-decocraft-cache-1.6.0.jar build/decocraft160/MANIFEST.MF -C build/decocraft160/jar .
+
+      - name: Static verification
+        shell: bash
+        run: |
+          set -euxo pipefail
+          JAR=dist/battlearmory-decocraft-cache-1.6.0.jar
+          test -s "$JAR"
+          jar tf "$JAR" | grep -q '^META-INF/coremods.json$'
+          jar tf "$JAR" | grep -q '^coremods/battlearmory_decocraft_cache.js$'
+          javap -classpath "$JAR" com.battlearmory.decocraftcache.DecocraftCacheRuntime | grep -q 'shouldElideBlockstateBake'
+          unzip -p "$JAR" META-INF/mods.toml | grep -q 'version="1.6.0"'
+          unzip -p "$JAR" coremods/battlearmory_decocraft_cache.js | grep -q 'blockstate_bake_elision'
+          unzip -p "$JAR" coremods/battlearmory_decocraft_cache.js | grep -q 'shouldElideBlockstateBake'
+          sha256sum "$JAR"
+          wc -c < "$JAR"
+
+      - name: Publish payload and build 0015
+        shell: bash
+        run: |
+          set -euxo pipefail
+          JAR=dist/battlearmory-decocraft-cache-1.6.0.jar
+          DEST=payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          SHA="$(sha256sum "$JAR" | awk '{print $1}')"
+          SIZE="$(wc -c < "$JAR" | tr -d '[:space:]')"
+          cp "$JAR" "$DEST"
+          printf '%s\n' "$SHA" > "$DEST.sha256"
+          printf '%s\n' "$SIZE" > "$DEST.size"
+
+          SHA="$SHA" SIZE="$SIZE" python - <<'PY'
+          import json, os
+          from pathlib import Path
+          old = json.loads(Path('builds/0014.json').read_text(encoding='utf-8'))
+          old['build'] = 15
+          old['name'] = 'Battle Armory Client 0015'
+          old['state'] = 'staging'
+          found = False
+          for f in old.get('files', []):
+              if f.get('path') == 'mods/battlearmory-decocraft-cache-1.0.0.jar':
+                  f['size'] = int(os.environ['SIZE'])
+                  f['sha256'] = os.environ['SHA']
+                  found = True
+          if not found:
+              raise SystemExit('helper entry missing from build 0014')
+          for c in old.get('components', []):
+              if c.get('id') == 'decocraft_render_cache':
+                  c['notes'] = ('v1.6.0 client optimizer: keeps BBModel graph/render caches, but suppresses Decocraft/Nature '
+                                'blockstate BakedQuad generation before it happens. Startup diagnostics showed exactly 18,404 '
+                                'BlockbenchModel bake calls, matching the 18,404 four-way blockstate model references, while placed '
+                                'furniture is rendered by AnimatedModelRenderer. Inventory-model paths (#inventory/item) are preserved '
+                                'defensively. Expected result: remove most of the ~6.9M Decocraft/Nature baked quads and their int[] '
+                                'vertex payloads. Resource-reload cache clearing remains enabled.')
+          Path('builds/0015.json').write_text(json.dumps(old, indent=2) + '\n', encoding='utf-8')
+          stable = json.loads(Path('stable.json').read_text(encoding='utf-8'))
+          stable['build'] = 15
+          stable['build_manifest'] = 'builds/0015.json'
+          stable['status'] = 'staging'
+          Path('stable.json').write_text(json.dumps(stable, indent=2) + '\n', encoding='utf-8')
+          PY
+
+          python -m json.tool builds/0015.json >/dev/null
+          python -m json.tool stable.json >/dev/null
+          git config user.name 'battlearmory-bot'
+          git config user.email 'battlearmory-bot@users.noreply.github.com'
+          git add \
+            tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java \
+            tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js \
+            tools/decocraft-cache/META-INF/mods.toml \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar.sha256 \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar.size \
+            builds/0015.json stable.json
+          git commit -m 'Publish Decocraft blockstate bake elision 1.6.0 as build 0015'
+          git push
