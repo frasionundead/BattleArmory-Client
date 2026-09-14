@@ -461,10 +461,10 @@ function addQuadDedupe(result, f) {
     };
 }
 
-function addBlockstateBakeElision(result, f) {
+function addWholeModelCache(result, f) {
     var slash = f.geometryLoader.lastIndexOf('/');
     var modelClass = f.geometryLoader.substring(0, slash + 1) + 'BlockbenchModel';
-    result['battlearmory_' + f.id + '_blockstate_bake_elision'] = {
+    result['battlearmory_' + f.id + '_whole_model_cache'] = {
         target: { type: 'CLASS', name: dotted(modelClass) },
         transformer: function(classNode) {
             var methods = classNode.methods.iterator();
@@ -476,21 +476,128 @@ function addBlockstateBakeElision(result, f) {
                     break;
                 }
             }
-            if (method === null) throw 'Battle Armory ' + f.id + ' blockstate bake elision: addQuads not found';
+            if (method === null) throw 'Battle Armory ' + f.id + ' whole-model cache: addQuads not found';
 
-            var first = method.instructions.getFirst();
-            if (first === null) throw 'Battle Armory ' + f.id + ' blockstate bake elision: empty addQuads';
-            var keep = new LabelNode();
-            var guard = new InsnList();
-            guard.add(new VarInsnNode(Opcodes.ALOAD, 6));
-            guard.add(new MethodInsnNode(
-                Opcodes.INVOKESTATIC, HELPER, 'shouldElideBlockstateBake',
-                '(Ljava/lang/Object;)Z', false));
-            guard.add(new JumpInsnNode(Opcodes.IFEQ, keep));
-            guard.add(new InsnNode(Opcodes.RETURN));
-            guard.add(keep);
-            method.instructions.insertBefore(first, guard);
-            method.maxStack = Math.max(method.maxStack, 1);
+            method.instructions.clear();
+            method.tryCatchBlocks.clear();
+            if (method.localVariables !== null) method.localVariables.clear();
+            var code = new InsnList();
+            code.add(new LdcInsnNode(f.id));
+            code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+            code.add(new VarInsnNode(Opcodes.ALOAD, 1));
+            code.add(new VarInsnNode(Opcodes.ALOAD, 2));
+            code.add(new VarInsnNode(Opcodes.ALOAD, 3));
+            code.add(new VarInsnNode(Opcodes.ALOAD, 4));
+            code.add(new VarInsnNode(Opcodes.ALOAD, 5));
+            code.add(new VarInsnNode(Opcodes.ALOAD, 6));
+            code.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC, HELPER, 'addQuadsCached',
+                '(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V',
+                false));
+            code.add(new InsnNode(Opcodes.RETURN));
+            method.instructions.add(code);
+            method.maxStack = 8;
+            method.maxLocals = 7;
+            return classNode;
+        }
+    };
+}
+
+function addBakedQuadRotationStorage(result) {
+    result['battlearmory_baked_quad_rotation_storage'] = {
+        target: { type: 'CLASS', name: dotted(BAKED_QUAD) },
+        transformer: function(classNode) {
+            var methods = classNode.methods.iterator();
+            var getter = null;
+            var verticesFieldName = null;
+            while (methods.hasNext()) {
+                var candidate = methods.next();
+                if (candidate.desc !== '()[I' || (candidate.access & Opcodes.ACC_STATIC) !== 0) continue;
+                var scan = candidate.instructions.getFirst();
+                while (scan !== null) {
+                    if (scan.getOpcode() === Opcodes.GETFIELD && scan.owner === BAKED_QUAD && scan.desc === '[I') {
+                        getter = candidate;
+                        verticesFieldName = scan.name;
+                        break;
+                    }
+                    scan = scan.getNext();
+                }
+                if (getter !== null) break;
+            }
+            if (getter === null || verticesFieldName === null) {
+                throw 'Battle Armory rotated-quad storage: BakedQuad int[] getter/field not found';
+            }
+
+            var fields = classNode.fields.iterator();
+            var verticesField = null;
+            var havePlan = false;
+            var haveMaterialized = false;
+            while (fields.hasNext()) {
+                var field = fields.next();
+                if (field.name === verticesFieldName && field.desc === '[I') verticesField = field;
+                if (field.name === 'ba$rotationPlan') havePlan = true;
+                if (field.name === 'ba$materialized') haveMaterialized = true;
+            }
+            if (verticesField === null) throw 'Battle Armory rotated-quad storage: vertices field node not found';
+            verticesField.access = verticesField.access & ~Opcodes.ACC_FINAL;
+            if (!havePlan) classNode.fields.add(new FieldNode(Opcodes.ACC_PRIVATE, 'ba$rotationPlan', 'B', null, null));
+            if (!haveMaterialized) classNode.fields.add(new FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_TRANSIENT, 'ba$materialized', '[I', null, null));
+
+            var haveCompress = false;
+            methods = classNode.methods.iterator();
+            while (methods.hasNext()) {
+                var existing = methods.next();
+                if (existing.name === 'ba$compress' && existing.desc === '([IB)V') { haveCompress = true; break; }
+            }
+            if (!haveCompress) {
+                var compress = new MethodNode(Opcodes.ACC_PUBLIC, 'ba$compress', '([IB)V', null, null);
+                compress.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                compress.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+                compress.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD, BAKED_QUAD, verticesFieldName, '[I'));
+                compress.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                compress.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+                compress.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD, BAKED_QUAD, 'ba$rotationPlan', 'B'));
+                compress.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                compress.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+                compress.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD, BAKED_QUAD, 'ba$materialized', '[I'));
+                compress.instructions.add(new InsnNode(Opcodes.RETURN));
+                compress.maxStack = 2;
+                compress.maxLocals = 3;
+                classNode.methods.add(compress);
+            }
+
+            getter.instructions.clear();
+            getter.tryCatchBlocks.clear();
+            if (getter.localVariables !== null) getter.localVariables.clear();
+            var normal = new LabelNode();
+            var cached = new LabelNode();
+            var code = new InsnList();
+            code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+            code.add(new FieldInsnNode(Opcodes.GETFIELD, BAKED_QUAD, 'ba$rotationPlan', 'B'));
+            code.add(new JumpInsnNode(Opcodes.IFEQ, normal));
+            code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+            code.add(new FieldInsnNode(Opcodes.GETFIELD, BAKED_QUAD, 'ba$materialized', '[I'));
+            code.add(new InsnNode(Opcodes.DUP));
+            code.add(new JumpInsnNode(Opcodes.IFNONNULL, cached));
+            code.add(new InsnNode(Opcodes.POP));
+            code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+            code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+            code.add(new FieldInsnNode(Opcodes.GETFIELD, BAKED_QUAD, verticesFieldName, '[I'));
+            code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+            code.add(new FieldInsnNode(Opcodes.GETFIELD, BAKED_QUAD, 'ba$rotationPlan', 'B'));
+            code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, HELPER, 'materializeRotatedVertices', '([IB)[I', false));
+            code.add(new InsnNode(Opcodes.DUP_X1));
+            code.add(new FieldInsnNode(Opcodes.PUTFIELD, BAKED_QUAD, 'ba$materialized', '[I'));
+            code.add(new InsnNode(Opcodes.ARETURN));
+            code.add(cached);
+            code.add(new InsnNode(Opcodes.ARETURN));
+            code.add(normal);
+            code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+            code.add(new FieldInsnNode(Opcodes.GETFIELD, BAKED_QUAD, verticesFieldName, '[I'));
+            code.add(new InsnNode(Opcodes.ARETURN));
+            getter.instructions.add(code);
+            getter.maxStack = 3;
+            getter.maxLocals = 1;
             return classNode;
         }
     };
@@ -501,8 +608,9 @@ function initializeCoreMod() {
     for (var i = 0; i < FAMILIES.length; i++) {
         addFamily(result, FAMILIES[i]);
         addMemoryDedupe(result, FAMILIES[i]);
-        addBlockstateBakeElision(result, FAMILIES[i]);
+        addWholeModelCache(result, FAMILIES[i]);
     }
+    addBakedQuadRotationStorage(result);
 
     // F3+T / resource-pack reload can temporarily coexist with the old model graph.
     // Clear Battle Armory's strong geometry/material references before Minecraft begins
