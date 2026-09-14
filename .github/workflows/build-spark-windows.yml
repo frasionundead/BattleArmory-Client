@@ -37,6 +37,29 @@ jobs:
       - name: Apply Battle Armory Windows JFR allocation backend
         shell: bash
         run: |
+          # Configure only the modules needed for the Forge artifact. The old
+          # spark tree also contains Fabric projects whose historical SNAPSHOT
+          # dependencies are no longer published, and Gradle configures those
+          # projects even when only :spark-forge:build is requested.
+          cat > .spark-build/settings.gradle <<'EOF'
+          pluginManagement {
+              repositories {
+                  maven {
+                      name = 'Forge'
+                      url = 'https://maven.minecraftforge.net/'
+                  }
+                  gradlePluginPortal()
+              }
+          }
+
+          rootProject.name = 'spark'
+          include (
+                  'spark-api',
+                  'spark-common',
+                  'spark-forge'
+          )
+          EOF
+
           cp diagnostics/spark-windows/JfrAllocationSampler.java \
             .spark-build/spark-common/src/main/java/me/lucko/spark/common/sampler/async/JfrAllocationSampler.java
           cp diagnostics/spark-windows/SamplerBuilder.java \
