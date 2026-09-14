@@ -37,6 +37,10 @@ var FAMILIES = [
     }
 ];
 
+function dotted(name) {
+    return name.replace(/\//g, '.');
+}
+
 function nextReal(insn) {
     var n = insn === null ? null : insn.getNext();
     while (n !== null && n.getOpcode() < 0) n = n.getNext();
@@ -45,7 +49,7 @@ function nextReal(insn) {
 
 function addFamily(result, f) {
     result['battlearmory_' + f.id + '_animated_model'] = {
-        target: { type: 'CLASS', name: f.amr.replaceAll('/', '.') },
+        target: { type: 'CLASS', name: dotted(f.amr) },
         transformer: function(classNode) {
             var fields = classNode.fields.iterator();
             while (fields.hasNext()) {
@@ -57,7 +61,7 @@ function addFamily(result, f) {
     };
 
     result['battlearmory_' + f.id + '_animated_renderer'] = {
-        target: { type: 'CLASS', name: f.ar.replaceAll('/', '.') },
+        target: { type: 'CLASS', name: dotted(f.ar) },
         transformer: function(classNode) {
             var methods = classNode.methods.iterator();
             var original = null;
