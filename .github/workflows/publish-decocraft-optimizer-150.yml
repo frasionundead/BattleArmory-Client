@@ -1,0 +1,134 @@
+name: Publish Decocraft optimizer 1.5.0 whole-model bake cache
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-decocraft-optimizer-150.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Add whole-model bake cache
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python .github/scripts/patch-decocraft-150.py
+          grep -n 'addQuadsCached' tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          grep -n 'wholeBakedModels' tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          grep -n 'whole_model_cache' tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          grep -n 'version="1.5.0"' tools/decocraft-cache/META-INF/mods.toml
+
+      - name: Verify addQuads targets in both Decocraft jars
+        shell: bash
+        run: |
+          set -euxo pipefail
+          for spec in \
+            'payload/mods/decocraft-3.0.4-1.20.1-slim.jar|com.razz.decocraft.models.bbmodel.BlockbenchModel' \
+            'payload/mods/decocraft_nature-1.0.4-1.20.1.jar|com.razz.decocraft_nature.models.bbmodel.BlockbenchModel'; do
+            IFS='|' read -r jar cls <<< "$spec"
+            javap -classpath "$jar" -p -s "$cls" | grep -A1 'protected void addQuads'
+          done
+
+      - name: Compile and package optimizer
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf build/decocraft150 dist
+          mkdir -p build/decocraft150/classes build/decocraft150/jar/META-INF build/decocraft150/jar/coremods dist
+          javac -source 17 -target 17 \
+            -d build/decocraft150/classes \
+            tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          cp -R build/decocraft150/classes/com build/decocraft150/jar/
+          cp tools/decocraft-cache/META-INF/mods.toml build/decocraft150/jar/META-INF/mods.toml
+          cp tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js build/decocraft150/jar/coremods/
+          OLD=payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          unzip -p "$OLD" META-INF/MANIFEST.MF > build/decocraft150/MANIFEST.MF
+          unzip -p "$OLD" META-INF/coremods.json > build/decocraft150/jar/META-INF/coremods.json
+          unzip -p "$OLD" pack.mcmeta > build/decocraft150/jar/pack.mcmeta
+          unzip -p "$OLD" battlearmory_translucent_materials.txt > build/decocraft150/jar/battlearmory_translucent_materials.txt
+          node --check tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          jar cfm dist/battlearmory-decocraft-cache-1.5.0.jar build/decocraft150/MANIFEST.MF -C build/decocraft150/jar .
+
+      - name: Static verification
+        shell: bash
+        run: |
+          set -euxo pipefail
+          JAR=dist/battlearmory-decocraft-cache-1.5.0.jar
+          test -s "$JAR"
+          jar tf "$JAR" | grep -q '^META-INF/coremods.json$'
+          jar tf "$JAR" | grep -q '^coremods/battlearmory_decocraft_cache.js$'
+          javap -classpath "$JAR" com.battlearmory.decocraftcache.DecocraftCacheRuntime | grep -q 'addQuadsCached'
+          unzip -p "$JAR" META-INF/mods.toml | grep -q 'version="1.5.0"'
+          unzip -p "$JAR" coremods/battlearmory_decocraft_cache.js | grep -q 'whole_model_cache'
+          unzip -p "$JAR" coremods/battlearmory_decocraft_cache.js | grep -q 'addQuadsCached'
+          sha256sum "$JAR"
+          wc -c < "$JAR"
+
+      - name: Publish payload and build 0014
+        shell: bash
+        run: |
+          set -euxo pipefail
+          JAR=dist/battlearmory-decocraft-cache-1.5.0.jar
+          DEST=payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          SHA="$(sha256sum "$JAR" | awk '{print $1}')"
+          SIZE="$(wc -c < "$JAR" | tr -d '[:space:]')"
+          cp "$JAR" "$DEST"
+          printf '%s\n' "$SHA" > "$DEST.sha256"
+          printf '%s\n' "$SIZE" > "$DEST.size"
+
+          SHA="$SHA" SIZE="$SIZE" python - <<'PY'
+          import json, os
+          from pathlib import Path
+          old = json.loads(Path('builds/0013.json').read_text(encoding='utf-8'))
+          old['build'] = 14
+          old['name'] = 'Battle Armory Client 0014'
+          old['state'] = 'staging'
+          found = False
+          for f in old.get('files', []):
+              if f.get('path') == 'mods/battlearmory-decocraft-cache-1.0.0.jar':
+                  f['size'] = int(os.environ['SIZE'])
+                  f['sha256'] = os.environ['SHA']
+                  found = True
+          if not found:
+              raise SystemExit('helper entry missing from build 0013')
+          for c in old.get('components', []):
+              if c.get('id') == 'decocraft_render_cache':
+                  c['notes'] = ('v1.5.0 client optimizer: v1.3.0 BBModel graph dedupe plus whole-model baked-geometry cache. '
+                                'Identical Decocraft/Nature geometry variants now bake their quad list once and replay shared '
+                                'BakedQuad references into later model builders. The weak v1.4 per-quad interner is disabled. '
+                                'Cache keys include model resource, scale, flipV, material, resolved sprite and ModelState rotation; '
+                                'cache clears on resource reload. Diagnostic stats are written to battlearmory-model-cache-stats.txt.')
+          Path('builds/0014.json').write_text(json.dumps(old, indent=2) + '\n', encoding='utf-8')
+          stable = json.loads(Path('stable.json').read_text(encoding='utf-8'))
+          stable['build'] = 14
+          stable['build_manifest'] = 'builds/0014.json'
+          stable['status'] = 'staging'
+          Path('stable.json').write_text(json.dumps(stable, indent=2) + '\n', encoding='utf-8')
+          PY
+
+          python -m json.tool builds/0014.json >/dev/null
+          python -m json.tool stable.json >/dev/null
+          git config user.name 'battlearmory-bot'
+          git config user.email 'battlearmory-bot@users.noreply.github.com'
+          git add \
+            tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java \
+            tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js \
+            tools/decocraft-cache/META-INF/mods.toml \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar.sha256 \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar.size \
+            builds/0014.json stable.json
+          git commit -m 'Publish Decocraft whole-model optimizer 1.5.0 as build 0014'
+          git push
