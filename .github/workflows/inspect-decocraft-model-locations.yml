@@ -1,0 +1,74 @@
+name: Inspect Decocraft block and item model locations
+on:
+  push:
+    paths:
+      - '.github/workflows/inspect-decocraft-model-locations.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect model JSON topology
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, zipfile, collections, os
+          jars = [
+            'payload/mods/decocraft-3.0.4-1.20.1-slim.jar',
+            'payload/mods/decocraft_nature-1.0.4-1.20.1.jar',
+          ]
+          for jar in jars:
+              print('=====', jar, '=====')
+              with zipfile.ZipFile(jar) as z:
+                  names = z.namelist()
+                  custom=[]; items=[]; blocks=[]; parents=collections.Counter(); item_parent_block=[]
+                  for n in names:
+                      if '/models/' not in n or not n.endswith('.json'): continue
+                      try: obj=json.loads(z.read(n))
+                      except Exception: continue
+                      loader=str(obj.get('loader',''))
+                      if 'blockbench' in loader.lower():
+                          custom.append((n, obj))
+                          if '/models/block/' in n: blocks.append((n,obj))
+                          if '/models/item/' in n: items.append((n,obj))
+                      if '/models/item/' in n:
+                          p=obj.get('parent')
+                          if isinstance(p,str):
+                              parents[p]+=1
+                              if ':block/' in p or p.startswith('block/'):
+                                  item_parent_block.append((n,p))
+                  print('custom_loader_total', len(custom))
+                  print('custom_loader_block', len(blocks))
+                  print('custom_loader_item', len(items))
+                  print('item_parent_block_total', len(item_parent_block))
+                  print('sample custom block:')
+                  for n,o in blocks[:8]: print(n, 'loader=',o.get('loader'),'model=',o.get('model'),'parent=',o.get('parent'))
+                  print('sample custom item:')
+                  for n,o in items[:8]: print(n, 'loader=',o.get('loader'),'model=',o.get('model'),'parent=',o.get('parent'))
+                  print('sample item->block parent:')
+                  for row in item_parent_block[:12]: print(*row)
+                  # Count blockstates model references by path form
+                  refs=collections.Counter(); samples=[]
+                  for n in names:
+                      if '/blockstates/' not in n or not n.endswith('.json'): continue
+                      try: obj=json.loads(z.read(n))
+                      except Exception: continue
+                      def walk(x):
+                          if isinstance(x,dict):
+                              if isinstance(x.get('model'),str):
+                                  refs[x['model']]+=1
+                                  if len(samples)<12: samples.append((n,x['model']))
+                              for v in x.values(): walk(v)
+                          elif isinstance(x,list):
+                              for v in x: walk(v)
+                      walk(obj)
+                  print('blockstate_model_ref_unique', len(refs),'total',sum(refs.values()))
+                  print('sample blockstate refs:')
+                  for s in samples: print(*s)
+          PY
