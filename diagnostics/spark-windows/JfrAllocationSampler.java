@@ -1,8 +1,21 @@
 /*
- * Battle Armory Windows allocation backend for spark 1.10.53.
+ * This file is part of spark.
  *
- * This file is distributed under the GNU General Public License v3.0,
- * matching the upstream spark project license.
+ *  Copyright (c) lucko (Luck) <luck@lucko.me>
+ *  Copyright (c) contributors
+ *
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 package me.lucko.spark.common.sampler.async;
 
@@ -32,13 +45,9 @@ import java.util.concurrent.TimeUnit;
 /**
  * Windows fallback allocation profiler using the JDK Flight Recorder.
  *
- * async-profiler has no native Windows backend in spark 1.10.53. Java 17,
- * however, ships JFR on Windows and exposes the same standard allocation event
- * types that spark's existing JfrReader already knows how to parse.
- *
- * ObjectAllocationInNewTLAB samples are weighted by tlabSize and
- * ObjectAllocationOutsideTLAB samples by allocationSize, matching spark's
- * existing AllocationSample.value() semantics.
+ * <p>spark 1.10.53 cannot use async-profiler on Windows, but Java 17 ships
+ * JFR on Windows and exposes the standard allocation events that spark's
+ * existing JFR reader already understands.</p>
  */
 public final class JfrAllocationSampler extends AbstractSampler {
     private final AsyncDataAggregator dataAggregator;
