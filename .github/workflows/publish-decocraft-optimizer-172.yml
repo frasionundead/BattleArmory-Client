@@ -1,0 +1,108 @@
+name: Publish Decocraft optimizer 1.7.2 BakedQuad compaction
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-decocraft-optimizer-172.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Apply BakedQuad wrapper compaction
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python .github/scripts/patch-decocraft-172.py
+          grep -n 'uncachedBakedQuad' tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          grep -n 'battlearmory_embeddium_baked_quad_cache_compaction' tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          grep -n "'uncachedBakedQuad'" tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          grep -n 'version="1.7.2"' tools/decocraft-cache/META-INF/mods.toml
+
+      - name: Compile and package optimizer
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf build/decocraft172 dist
+          mkdir -p build/decocraft172/classes build/decocraft172/jar/META-INF build/decocraft172/jar/coremods dist
+          javac -source 17 -target 17 -d build/decocraft172/classes tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          cp -R build/decocraft172/classes/com build/decocraft172/jar/
+          cp tools/decocraft-cache/META-INF/mods.toml build/decocraft172/jar/META-INF/mods.toml
+          cp tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js build/decocraft172/jar/coremods/
+          OLD=payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          unzip -p "$OLD" META-INF/MANIFEST.MF > build/decocraft172/MANIFEST.MF
+          unzip -p "$OLD" META-INF/coremods.json > build/decocraft172/jar/META-INF/coremods.json
+          unzip -p "$OLD" pack.mcmeta > build/decocraft172/jar/pack.mcmeta
+          unzip -p "$OLD" battlearmory_translucent_materials.txt > build/decocraft172/jar/battlearmory_translucent_materials.txt
+          node --check tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          jar cfm dist/battlearmory-decocraft-cache-1.7.2.jar build/decocraft172/MANIFEST.MF -C build/decocraft172/jar .
+
+      - name: Static verification
+        shell: bash
+        run: |
+          set -euxo pipefail
+          JAR=dist/battlearmory-decocraft-cache-1.7.2.jar
+          test -s "$JAR"
+          javap -classpath "$JAR" com.battlearmory.decocraftcache.DecocraftCacheRuntime | grep -q 'uncachedBakedQuad'
+          javap -classpath "$JAR" com.battlearmory.decocraftcache.DecocraftCacheRuntime | grep -q 'effectiveBakedQuadVertices'
+          unzip -p "$JAR" META-INF/mods.toml | grep -q 'version="1.7.2"'
+          unzip -p "$JAR" coremods/battlearmory_decocraft_cache.js | grep -q 'battlearmory_embeddium_baked_quad_cache_compaction'
+          unzip -p "$JAR" coremods/battlearmory_decocraft_cache.js | grep -q "'uncachedBakedQuad'"
+          if unzip -p "$JAR" coremods/battlearmory_decocraft_cache.js | grep -q "'canonicalBakedQuad'"; then
+            echo 'old quad interner call still present' >&2
+            exit 1
+          fi
+          sha256sum "$JAR"
+          wc -c < "$JAR"
+
+      - name: Publish payload and build 0019
+        shell: bash
+        run: |
+          set -euxo pipefail
+          JAR=dist/battlearmory-decocraft-cache-1.7.2.jar
+          DEST=payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          SHA="$(sha256sum "$JAR" | awk '{print $1}')"
+          SIZE="$(wc -c < "$JAR" | tr -d '[:space:]')"
+          cp "$JAR" "$DEST"
+          printf '%s\n' "$SHA" > "$DEST.sha256"
+          printf '%s\n' "$SIZE" > "$DEST.size"
+          SHA="$SHA" SIZE="$SIZE" python - <<'PY'
+          import json, os
+          from pathlib import Path
+          old=json.loads(Path('builds/0018.json').read_text())
+          old['build']=19
+          old['name']='Battle Armory Client 0019'
+          old['state']='staging'
+          for f in old['files']:
+              if f.get('path')=='mods/battlearmory-decocraft-cache-1.0.0.jar':
+                  f['size']=int(os.environ['SIZE'])
+                  f['sha256']=os.environ['SHA']
+                  break
+          else:
+              raise SystemExit('helper missing')
+          for c in old.get('components',[]):
+              if c.get('id')=='decocraft_render_cache':
+                  c['notes']=('v1.7.2: keeps the successful v1.7.1 rotated-vertex compression and Embeddium orientation fix, disables the low-hit 1M-entry BakedQuad content interner, and removes Embeddium retained normal/normalFace caches from every BakedQuad. Normal metadata is recomputed during chunk compilation using the same Embeddium ModelQuadUtil logic. Geometry, textures, directions, tint, shade, AO and rotation payloads are unchanged.')
+          Path('builds/0019.json').write_text(json.dumps(old,indent=2)+'\n')
+          stable=json.loads(Path('stable.json').read_text())
+          stable['build']=19
+          stable['build_manifest']='builds/0019.json'
+          stable['status']='staging'
+          Path('stable.json').write_text(json.dumps(stable,indent=2)+'\n')
+          PY
+          python -m json.tool builds/0019.json >/dev/null
+          python -m json.tool stable.json >/dev/null
+          git config user.name battlearmory-bot
+          git config user.email battlearmory-bot@users.noreply.github.com
+          git add tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js tools/decocraft-cache/META-INF/mods.toml payload/mods/battlearmory-decocraft-cache-1.0.0.jar payload/mods/battlearmory-decocraft-cache-1.0.0.jar.sha256 payload/mods/battlearmory-decocraft-cache-1.0.0.jar.size builds/0019.json stable.json
+          git commit -m 'Publish Decocraft optimizer 1.7.2 BakedQuad compaction as build 0019'
+          git push
