@@ -1,0 +1,31 @@
+name: Inspect Decocraft addQuads and loader cache
+on:
+  push:
+    paths:
+      - '.github/workflows/inspect-decocraft-addquads.yml'
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Inspect addQuads and loader cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          for spec in \
+            'payload/mods/decocraft-3.0.4-1.20.1-slim.jar|com.razz.decocraft.models.bbmodel' \
+            'payload/mods/decocraft_nature-1.0.4-1.20.1.jar|com.razz.decocraft_nature.models.bbmodel'; do
+            IFS='|' read -r jar pkg <<< "$spec"
+            echo "===== $pkg.BlockbenchModel full bytecode ====="
+            javap -classpath "$jar" -p -c -s "$pkg.BlockbenchModel"
+            echo "===== $pkg.BlockbenchLoader full bytecode ====="
+            javap -classpath "$jar" -p -c -s "$pkg.BlockbenchLoader"
+            echo "===== $pkg.BlockbenchLoader BlockbenchSetting ====="
+            javap -classpath "$jar" -p -c -s "$pkg.BlockbenchLoader\$BlockbenchSetting"
+          done
