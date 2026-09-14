@@ -4,10 +4,10 @@ license="All Rights Reserved"
 
 [[mods]]
 modId="battlearmory_decocraft_cache"
-version="1.1.0"
+version="1.2.0"
 displayName="Battle Armory Decocraft Render Optimizer"
 displayTest="IGNORE_ALL_VERSION"
-description='''Client-side Battle Armory optimization for Decocraft and Decocraft Nature animated geometry and render batching.'''
+description='''Client-side Battle Armory optimization for Decocraft and Decocraft Nature animated geometry, materials, transforms and render batching.'''
 
 [[dependencies.battlearmory_decocraft_cache]]
 modId="forge"
