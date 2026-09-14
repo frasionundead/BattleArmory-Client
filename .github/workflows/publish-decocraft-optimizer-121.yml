@@ -1,0 +1,160 @@
+name: Publish Decocraft optimizer 1.2.1 reload-safe
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-decocraft-optimizer-121.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Patch source for reload-safe cache lifetime
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          runtime = Path('tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java')
+          text = runtime.read_text(encoding='utf-8')
+          anchor = '    private DecocraftCacheRuntime() {}\n\n'
+          method = '''    private DecocraftCacheRuntime() {}\n\n    /** Drop resource-derived caches before Minecraft starts a resource-pack reload. */\n    public static void clearForResourceReload() {\n        int models = 0;\n        int materials = 0;\n        for (FamilyState state : FAMILIES.values()) {\n            models += state.modelCache.size();\n            materials += state.materialCache.size();\n            state.modelCache.clear();\n            state.nodesByModel.clear();\n            state.materialCache.clear();\n        }\n        System.out.println("[BattleArmory] Resource reload: cleared Decocraft caches (models=" + models + ", materials=" + materials + ").");\n    }\n\n'''
+          if 'public static void clearForResourceReload()' not in text:
+              if anchor not in text:
+                  raise SystemExit('runtime constructor anchor not found')
+              text = text.replace(anchor, method, 1)
+          runtime.write_text(text, encoding='utf-8')
+
+          coremod = Path('tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js')
+          js = coremod.read_text(encoding='utf-8')
+          old = '''function initializeCoreMod() {\n    var result = {};\n    for (var i = 0; i < FAMILIES.length; i++) addFamily(result, FAMILIES[i]);\n    return result;\n}\n'''
+          new = '''function initializeCoreMod() {\n    var result = {};\n    for (var i = 0; i < FAMILIES.length; i++) addFamily(result, FAMILIES[i]);\n\n    // F3+T / resource-pack reload can temporarily coexist with the old model graph.\n    // Clear Battle Armory's strong geometry/material references before Minecraft begins\n    // building the new resource set so the old cached ModelParts are immediately GC-eligible.\n    result['battlearmory_resource_reload_clear'] = {\n        target: { type: 'CLASS', name: 'net.minecraft.client.Minecraft' },\n        transformer: function(classNode) {\n            var methods = classNode.methods.iterator();\n            var found = null;\n            while (methods.hasNext()) {\n                var method = methods.next();\n                if ((method.name === 'm_91391_' || method.name === 'reloadResourcePacks') &&\n                    method.desc === '()Ljava/util/concurrent/CompletableFuture;') {\n                    found = method;\n                    break;\n                }\n            }\n            if (found === null) throw 'Battle Armory cache: Minecraft resource reload method was not found';\n            var call = new MethodInsnNode(\n                Opcodes.INVOKESTATIC,\n                HELPER,\n                'clearForResourceReload',\n                '()V',\n                false\n            );\n            found.instructions.insertBefore(found.instructions.getFirst(), call);\n            return classNode;\n        }\n    };\n\n    return result;\n}\n'''
+          if 'battlearmory_resource_reload_clear' not in js:
+              if old not in js:
+                  raise SystemExit('coremod initialize anchor not found')
+              js = js.replace(old, new, 1)
+          coremod.write_text(js, encoding='utf-8')
+
+          mods = Path('tools/decocraft-cache/META-INF/mods.toml')
+          mt = mods.read_text(encoding='utf-8')
+          mt = mt.replace('version="1.2.0"', 'version="1.2.1"', 1)
+          mods.write_text(mt, encoding='utf-8')
+          PY
+
+          grep -n 'clearForResourceReload' tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          grep -n 'battlearmory_resource_reload_clear' tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          grep -n 'm_91391_' tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          grep -n 'version="1.2.1"' tools/decocraft-cache/META-INF/mods.toml
+
+      - name: Compile and package optimizer
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf build/decocraft121 dist
+          mkdir -p build/decocraft121/classes build/decocraft121/jar/META-INF build/decocraft121/jar/coremods dist
+
+          javac -source 17 -target 17 \
+            -d build/decocraft121/classes \
+            tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+
+          cp -R build/decocraft121/classes/com build/decocraft121/jar/
+          cp tools/decocraft-cache/META-INF/mods.toml build/decocraft121/jar/META-INF/mods.toml
+          cp tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js build/decocraft121/jar/coremods/
+
+          OLD=payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          unzip -p "$OLD" META-INF/MANIFEST.MF > build/decocraft121/MANIFEST.MF
+          unzip -p "$OLD" META-INF/coremods.json > build/decocraft121/jar/META-INF/coremods.json
+          unzip -p "$OLD" pack.mcmeta > build/decocraft121/jar/pack.mcmeta
+          unzip -p "$OLD" battlearmory_translucent_materials.txt > build/decocraft121/jar/battlearmory_translucent_materials.txt
+
+          node --check tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          jar cfm dist/battlearmory-decocraft-cache-1.2.1.jar build/decocraft121/MANIFEST.MF -C build/decocraft121/jar .
+
+      - name: Static verification
+        shell: bash
+        run: |
+          set -euxo pipefail
+          JAR=dist/battlearmory-decocraft-cache-1.2.1.jar
+          test -s "$JAR"
+          jar tf "$JAR" | grep -q '^META-INF/coremods.json$'
+          jar tf "$JAR" | grep -q '^coremods/battlearmory_decocraft_cache.js$'
+          javap -classpath "$JAR" com.battlearmory.decocraftcache.DecocraftCacheRuntime | grep -q 'clearForResourceReload'
+          unzip -p "$JAR" META-INF/mods.toml | grep -q 'version="1.2.1"'
+          unzip -p "$JAR" coremods/battlearmory_decocraft_cache.js | grep -q 'm_91391_'
+          unzip -p "$JAR" coremods/battlearmory_decocraft_cache.js | grep -q 'clearForResourceReload'
+          sha256sum "$JAR"
+          wc -c < "$JAR"
+
+      - name: Publish payload and build 0010
+        shell: bash
+        run: |
+          set -euxo pipefail
+          JAR=dist/battlearmory-decocraft-cache-1.2.1.jar
+          DEST=payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          SHA="$(sha256sum "$JAR" | awk '{print $1}')"
+          SIZE="$(wc -c < "$JAR" | tr -d '[:space:]')"
+
+          cp "$JAR" "$DEST"
+          printf '%s\n' "$SHA" > "$DEST.sha256"
+          printf '%s\n' "$SIZE" > "$DEST.size"
+
+          SHA="$SHA" SIZE="$SIZE" python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          old = json.loads(Path('builds/0009.json').read_text(encoding='utf-8'))
+          old['build'] = 10
+          old['name'] = 'Battle Armory Client 0010'
+          old['state'] = 'staging'
+          found = False
+          for f in old.get('files', []):
+              if f.get('path') == 'mods/battlearmory-decocraft-cache-1.0.0.jar':
+                  f['size'] = int(os.environ['SIZE'])
+                  f['sha256'] = os.environ['SHA']
+                  found = True
+          if not found:
+              raise SystemExit('helper entry missing from build 0009')
+          for c in old.get('components', []):
+              if c.get('id') == 'decocraft_render_cache':
+                  c['notes'] = ('v1.2.1 reload-safe client optimizer: v1.2.0 render/allocation caches retained, '
+                                'but Decocraft geometry/material caches are cleared before Minecraft resource reloads '
+                                'to avoid retaining the previous multi-GB model graph during F3+T.')
+          Path('builds/0010.json').write_text(json.dumps(old, indent=2) + '\n', encoding='utf-8')
+
+          stable = json.loads(Path('stable.json').read_text(encoding='utf-8'))
+          stable['build'] = 10
+          stable['build_manifest'] = 'builds/0010.json'
+          stable['status'] = 'staging'
+          Path('stable.json').write_text(json.dumps(stable, indent=2) + '\n', encoding='utf-8')
+          PY
+
+          python -m json.tool builds/0010.json >/dev/null
+          python -m json.tool stable.json >/dev/null
+          grep -n '"build": 10' stable.json
+          grep -n 'battlearmory-decocraft-cache-1.0.0.jar' builds/0010.json
+
+          git config user.name 'battlearmory-bot'
+          git config user.email 'battlearmory-bot@users.noreply.github.com'
+          git add \
+            tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java \
+            tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js \
+            tools/decocraft-cache/META-INF/mods.toml \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar.sha256 \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar.size \
+            builds/0010.json stable.json
+          git commit -m 'Publish Decocraft optimizer 1.2.1 as build 0010'
+          git push
