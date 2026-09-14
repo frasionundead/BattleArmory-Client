@@ -1,0 +1,6 @@
+com/starfish_studios/another_furniture/client/renderer/blockentity/
+com/starfish_studios/another_furniture/client/renderer/blockentity/FlowerBoxRenderer$1.class
+com/starfish_studios/another_furniture/client/renderer/blockentity/FlowerBoxRenderer.class
+com/starfish_studios/another_furniture/client/renderer/blockentity/ServiceBellButtonRenderer.class
+com/starfish_studios/another_furniture/client/renderer/blockentity/ShelfRenderer.class
+com/starfish_studios/another_furniture/client/renderer/blockentity/SmallShelfRenderer.class

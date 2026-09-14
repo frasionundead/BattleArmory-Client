@@ -1,0 +1,486 @@
+Compiled from "AnimatedRenderer.java"
+public class com.razz.decocraft_nature.client.render.AnimatedRenderer implements net.minecraft.client.renderer.blockentity.BlockEntityRenderer<com.razz.decocraft_nature.common.tileentities.AnimatedTileEntity> {
+  private static final java.lang.String ROOT;
+    descriptor: Ljava/lang/String;
+
+  private static java.util.Map<java.lang.String, net.minecraft.client.model.geom.ModelPart> CACHE;
+    descriptor: Ljava/util/Map;
+
+  private final net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider$Context context;
+    descriptor: Lnet/minecraft/client/renderer/blockentity/BlockEntityRendererProvider$Context;
+
+  public com.razz.decocraft_nature.client.render.AnimatedRenderer(net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider$Context);
+    descriptor: (Lnet/minecraft/client/renderer/blockentity/BlockEntityRendererProvider$Context;)V
+    Code:
+       0: aload_0
+       1: invokespecial #61                 // Method java/lang/Object."<init>":()V
+       4: aload_0
+       5: aload_1
+       6: putfield      #63                 // Field context:Lnet/minecraft/client/renderer/blockentity/BlockEntityRendererProvider$Context;
+       9: return
+
+  public void render(com.razz.decocraft_nature.common.tileentities.AnimatedTileEntity, float, com.mojang.blaze3d.vertex.PoseStack, net.minecraft.client.renderer.MultiBufferSource, int, int);
+    descriptor: (Lcom/razz/decocraft_nature/common/tileentities/AnimatedTileEntity;FLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;II)V
+    Code:
+       0: aload_1
+       1: fload_2
+       2: ldc           #68                 // float 20.0f
+       4: fdiv
+       5: f2d
+       6: invokevirtual #74                 // Method com/razz/decocraft_nature/common/tileentities/AnimatedTileEntity.addTimer:(D)V
+       9: aload_1
+      10: invokevirtual #78                 // Method com/razz/decocraft_nature/common/tileentities/AnimatedTileEntity.m_58898_:()Z
+      13: ifne          17
+      16: return
+      17: aload_1
+      18: invokevirtual #82                 // Method com/razz/decocraft_nature/common/tileentities/AnimatedTileEntity.m_58904_:()Lnet/minecraft/world/level/Level;
+      21: aload_1
+      22: invokevirtual #86                 // Method com/razz/decocraft_nature/common/tileentities/AnimatedTileEntity.m_58899_:()Lnet/minecraft/core/BlockPos;
+      25: invokevirtual #92                 // Method net/minecraft/world/level/Level.m_8055_:(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/state/BlockState;
+      28: astore        7
+      30: aload         7
+      32: getstatic     #98                 // Field com/razz/decocraft_nature/common/properties/DecoProperty.FACING:Lnet/minecraft/world/level/block/state/properties/DirectionProperty;
+      35: invokevirtual #104                // Method net/minecraft/world/level/block/state/BlockState.m_61138_:(Lnet/minecraft/world/level/block/state/properties/Property;)Z
+      38: ifne          42
+      41: return
+      42: aload         7
+      44: getstatic     #98                 // Field com/razz/decocraft_nature/common/properties/DecoProperty.FACING:Lnet/minecraft/world/level/block/state/properties/DirectionProperty;
+      47: invokevirtual #108                // Method net/minecraft/world/level/block/state/BlockState.m_61143_:(Lnet/minecraft/world/level/block/state/properties/Property;)Ljava/lang/Comparable;
+      50: checkcast     #110                // class net/minecraft/core/Direction
+      53: astore        8
+      55: aload         7
+      57: invokevirtual #114                // Method net/minecraft/world/level/block/state/BlockState.m_60734_:()Lnet/minecraft/world/level/block/Block;
+      60: checkcast     #116                // class com/razz/decocraft_nature/common/blocks/DecocraftBlock
+      63: astore        9
+      65: aload_0
+      66: aload         9
+      68: getfield      #120                // Field com/razz/decocraft_nature/common/blocks/DecocraftBlock.meta:Lcom/razz/decocraft_nature/common/JsonContainer$Entry;
+      71: aload         9
+      73: getfield      #124                // Field com/razz/decocraft_nature/common/blocks/DecocraftBlock.model:Lcom/razz/decocraft_nature/models/bbmodel/BBModel;
+      76: aload_1
+      77: invokevirtual #128                // Method parseModel:(Lcom/razz/decocraft_nature/common/JsonContainer$Entry;Lcom/razz/decocraft_nature/models/bbmodel/BBModel;Lcom/razz/decocraft_nature/common/tileentities/AnimatedTileEntity;)Lnet/minecraft/client/model/geom/ModelPart;
+      80: astore        10
+      82: new           #130                // class net/minecraft/client/resources/model/Material
+      85: dup
+      86: getstatic     #136                // Field net/minecraft/client/renderer/texture/TextureAtlas.f_118259_:Lnet/minecraft/resources/ResourceLocation;
+      89: new           #138                // class net/minecraft/resources/ResourceLocation
+      92: dup
+      93: ldc           #140                // String decocraft_nature
+      95: aload         9
+      97: getfield      #120                // Field com/razz/decocraft_nature/common/blocks/DecocraftBlock.meta:Lcom/razz/decocraft_nature/common/JsonContainer$Entry;
+     100: getfield      #143                // Field com/razz/decocraft_nature/common/JsonContainer$Entry.material:Ljava/lang/String;
+     103: invokedynamic #155,  0            // InvokeDynamic #0:makeConcatWithConstants:(Ljava/lang/String;)Ljava/lang/String;
+     108: invokespecial #158                // Method net/minecraft/resources/ResourceLocation."<init>":(Ljava/lang/String;Ljava/lang/String;)V
+     111: invokespecial #161                // Method net/minecraft/client/resources/model/Material."<init>":(Lnet/minecraft/resources/ResourceLocation;Lnet/minecraft/resources/ResourceLocation;)V
+     114: astore        11
+     116: aload         11
+     118: aload         4
+     120: invokedynamic #182,  0            // InvokeDynamic #1:apply:()Ljava/util/function/Function;
+     125: invokevirtual #186                // Method net/minecraft/client/resources/model/Material.m_119194_:(Lnet/minecraft/client/renderer/MultiBufferSource;Ljava/util/function/Function;)Lcom/mojang/blaze3d/vertex/VertexConsumer;
+     128: astore        12
+     130: aload_3
+     131: invokevirtual #191                // Method com/mojang/blaze3d/vertex/PoseStack.m_85836_:()V
+     134: aload_3
+     135: new           #193                // class org/joml/Quaternionf
+     138: dup
+     139: new           #195                // class org/joml/AxisAngle4f
+     142: dup
+     143: aload         8
+     145: invokevirtual #199                // Method net/minecraft/core/Direction.m_122435_:()F
+     148: invokestatic  #205                // Method com/razz/decocraft_nature/utils/DecoMath.toRadians:(F)F
+     151: getstatic     #211                // Field com/razz/decocraft_nature/utils/vector/Vector3f.YN:Lcom/razz/decocraft_nature/utils/vector/Vector3f;
+     154: invokespecial #214                // Method org/joml/AxisAngle4f."<init>":(FLorg/joml/Vector3fc;)V
+     157: invokespecial #217                // Method org/joml/Quaternionf."<init>":(Lorg/joml/AxisAngle4f;)V
+     160: invokevirtual #221                // Method com/mojang/blaze3d/vertex/PoseStack.m_252781_:(Lorg/joml/Quaternionf;)V
+     163: aload_3
+     164: new           #193                // class org/joml/Quaternionf
+     167: dup
+     168: new           #195                // class org/joml/AxisAngle4f
+     171: dup
+     172: ldc           #222                // float 180.0f
+     174: invokestatic  #205                // Method com/razz/decocraft_nature/utils/DecoMath.toRadians:(F)F
+     177: getstatic     #225                // Field com/razz/decocraft_nature/utils/vector/Vector3f.XN:Lcom/razz/decocraft_nature/utils/vector/Vector3f;
+     180: invokespecial #214                // Method org/joml/AxisAngle4f."<init>":(FLorg/joml/Vector3fc;)V
+     183: invokespecial #217                // Method org/joml/Quaternionf."<init>":(Lorg/joml/AxisAngle4f;)V
+     186: invokevirtual #221                // Method com/mojang/blaze3d/vertex/PoseStack.m_252781_:(Lorg/joml/Quaternionf;)V
+     189: aload_3
+     190: new           #193                // class org/joml/Quaternionf
+     193: dup
+     194: new           #195                // class org/joml/AxisAngle4f
+     197: dup
+     198: ldc           #222                // float 180.0f
+     200: invokestatic  #205                // Method com/razz/decocraft_nature/utils/DecoMath.toRadians:(F)F
+     203: getstatic     #228                // Field com/razz/decocraft_nature/utils/vector/Vector3f.ZN:Lcom/razz/decocraft_nature/utils/vector/Vector3f;
+     206: invokespecial #214                // Method org/joml/AxisAngle4f."<init>":(FLorg/joml/Vector3fc;)V
+     209: invokespecial #217                // Method org/joml/Quaternionf."<init>":(Lorg/joml/AxisAngle4f;)V
+     212: invokevirtual #221                // Method com/mojang/blaze3d/vertex/PoseStack.m_252781_:(Lorg/joml/Quaternionf;)V
+     215: getstatic     #232                // Field com/razz/decocraft_nature/client/render/AnimatedRenderer$1.$SwitchMap$net$minecraft$core$Direction:[I
+     218: aload         8
+     220: invokevirtual #236                // Method net/minecraft/core/Direction.ordinal:()I
+     223: iaload
+     224: tableswitch   { // 1 to 4
+                     1: 256
+                     2: 270
+                     3: 284
+                     4: 298
+               default: 312
+          }
+     256: aload_3
+     257: ldc2_w        #243                // double 0.5d
+     260: dconst_0
+     261: ldc2_w        #243                // double 0.5d
+     264: invokevirtual #248                // Method com/mojang/blaze3d/vertex/PoseStack.m_85837_:(DDD)V
+     267: goto          312
+     270: aload_3
+     271: ldc2_w        #249                // double -0.5d
+     274: dconst_0
+     275: ldc2_w        #249                // double -0.5d
+     278: invokevirtual #248                // Method com/mojang/blaze3d/vertex/PoseStack.m_85837_:(DDD)V
+     281: goto          312
+     284: aload_3
+     285: ldc2_w        #243                // double 0.5d
+     288: dconst_0
+     289: ldc2_w        #249                // double -0.5d
+     292: invokevirtual #248                // Method com/mojang/blaze3d/vertex/PoseStack.m_85837_:(DDD)V
+     295: goto          312
+     298: aload_3
+     299: ldc2_w        #249                // double -0.5d
+     302: dconst_0
+     303: ldc2_w        #243                // double 0.5d
+     306: invokevirtual #248                // Method com/mojang/blaze3d/vertex/PoseStack.m_85837_:(DDD)V
+     309: goto          312
+     312: aload         10
+     314: aload_3
+     315: aload         12
+     317: iload         5
+     319: iload         6
+     321: invokevirtual #254                // Method net/minecraft/client/model/geom/ModelPart.m_104301_:(Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;II)V
+     324: aload_3
+     325: invokevirtual #257                // Method com/mojang/blaze3d/vertex/PoseStack.m_85849_:()V
+     328: return
+
+  private net.minecraft.client.model.geom.ModelPart parseModel(com.razz.decocraft_nature.common.JsonContainer$Entry, com.razz.decocraft_nature.models.bbmodel.BBModel, com.razz.decocraft_nature.common.tileentities.AnimatedTileEntity);
+    descriptor: (Lcom/razz/decocraft_nature/common/JsonContainer$Entry;Lcom/razz/decocraft_nature/models/bbmodel/BBModel;Lcom/razz/decocraft_nature/common/tileentities/AnimatedTileEntity;)Lnet/minecraft/client/model/geom/ModelPart;
+    Code:
+       0: new           #280                // class com/razz/decocraft_nature/client/render/AnimatedModelRenderer
+       3: dup
+       4: aload_2
+       5: getfield      #286                // Field com/razz/decocraft_nature/models/bbmodel/BBModel.resolution:Lcom/razz/decocraft_nature/models/bbmodel/BBModelParts$Resolution;
+       8: getfield      #289                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$Resolution.width:I
+      11: aload_2
+      12: getfield      #286                // Field com/razz/decocraft_nature/models/bbmodel/BBModel.resolution:Lcom/razz/decocraft_nature/models/bbmodel/BBModelParts$Resolution;
+      15: getfield      #292                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$Resolution.height:I
+      18: aconst_null
+      19: ldc           #51                 // String ROOT
+      21: invokespecial #295                // Method com/razz/decocraft_nature/client/render/AnimatedModelRenderer."<init>":(IILcom/razz/decocraft_nature/models/bbmodel/BBModelParts$Element;Ljava/lang/String;)V
+      24: astore        4
+      26: aload_3
+      27: invokevirtual #299                // Method com/razz/decocraft_nature/common/tileentities/AnimatedTileEntity.getKeyframes:()Ljava/util/Map;
+      30: astore        5
+      32: aload_0
+      33: aload_2
+      34: getfield      #286                // Field com/razz/decocraft_nature/models/bbmodel/BBModel.resolution:Lcom/razz/decocraft_nature/models/bbmodel/BBModelParts$Resolution;
+      37: getfield      #289                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$Resolution.width:I
+      40: aload_2
+      41: getfield      #286                // Field com/razz/decocraft_nature/models/bbmodel/BBModel.resolution:Lcom/razz/decocraft_nature/models/bbmodel/BBModelParts$Resolution;
+      44: getfield      #292                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$Resolution.height:I
+      47: new           #30                 // class com/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase
+      50: dup
+      51: invokespecial #300                // Method com/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase."<init>":()V
+      54: aload_2
+      55: getfield      #304                // Field com/razz/decocraft_nature/models/bbmodel/BBModel.outliner:Ljava/util/List;
+      58: aload_2
+      59: getfield      #307                // Field com/razz/decocraft_nature/models/bbmodel/BBModel.uuidMap:Ljava/util/Map;
+      62: aload         4
+      64: ldc           #51                 // String ROOT
+      66: aload         5
+      68: invokevirtual #311                // Method parseOutliners:(IILcom/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase;Ljava/util/List;Ljava/util/Map;Lcom/razz/decocraft_nature/client/render/AnimatedModelRenderer;Ljava/lang/String;Ljava/util/Map;)V
+      71: aload         4
+      73: areturn
+
+  private void parseOutliners(int, int, com.razz.decocraft_nature.models.bbmodel.BBModelParts$ElementBase, java.util.List<com.razz.decocraft_nature.models.bbmodel.BBModelParts$OutlinerNode>, java.util.Map<java.lang.String, com.razz.decocraft_nature.models.bbmodel.BBModelParts$ElementBase>, com.razz.decocraft_nature.client.render.AnimatedModelRenderer, java.lang.String, java.util.Map<java.lang.String, java.util.Map<com.razz.decocraft_nature.models.bbmodel.BBModelParts$Channel, float[]>>);
+    descriptor: (IILcom/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase;Ljava/util/List;Ljava/util/Map;Lcom/razz/decocraft_nature/client/render/AnimatedModelRenderer;Ljava/lang/String;Ljava/util/Map;)V
+    Code:
+       0: aload         4
+       2: invokeinterface #322,  1          // InterfaceMethod java/util/List.iterator:()Ljava/util/Iterator;
+       7: astore        9
+       9: aload         9
+      11: invokeinterface #327,  1          // InterfaceMethod java/util/Iterator.hasNext:()Z
+      16: ifeq          592
+      19: aload         9
+      21: invokeinterface #331,  1          // InterfaceMethod java/util/Iterator.next:()Ljava/lang/Object;
+      26: checkcast     #33                 // class com/razz/decocraft_nature/models/bbmodel/BBModelParts$OutlinerNode
+      29: astore        10
+      31: aload         10
+      33: instanceof    #36                 // class com/razz/decocraft_nature/models/bbmodel/BBModelParts$OutlinerGroup
+      36: ifeq          49
+      39: aload         10
+      41: checkcast     #36                 // class com/razz/decocraft_nature/models/bbmodel/BBModelParts$OutlinerGroup
+      44: astore        11
+      46: goto          91
+      49: aload         10
+      51: instanceof    #39                 // class com/razz/decocraft_nature/models/bbmodel/BBModelParts$OutlinerCube
+      54: ifeq          80
+      57: aload         5
+      59: aload         10
+      61: checkcast     #39                 // class com/razz/decocraft_nature/models/bbmodel/BBModelParts$OutlinerCube
+      64: getfield      #334                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$OutlinerCube.uuid:Ljava/lang/String;
+      67: invokeinterface #339,  2          // InterfaceMethod java/util/Map.get:(Ljava/lang/Object;)Ljava/lang/Object;
+      72: checkcast     #30                 // class com/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase
+      75: astore        11
+      77: goto          91
+      80: new           #341                // class com/razz/decocraft_nature/DecoException
+      83: dup
+      84: ldc_w         #343                // String Error processing the outliners
+      87: invokespecial #346                // Method com/razz/decocraft_nature/DecoException."<init>":(Ljava/lang/String;)V
+      90: athrow
+      91: aload         7
+      93: aload         11
+      95: getfield      #349                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase.name:Ljava/lang/String;
+      98: invokedynamic #354,  0            // InvokeDynamic #2:makeConcatWithConstants:(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+     103: astore        12
+     105: new           #280                // class com/razz/decocraft_nature/client/render/AnimatedModelRenderer
+     108: dup
+     109: iload_1
+     110: iload_2
+     111: aload         11
+     113: getfield      #357                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase.type:Ljava/lang/String;
+     116: ldc_w         #359                // String cube
+     119: invokestatic  #365                // Method java/util/Objects.equals:(Ljava/lang/Object;Ljava/lang/Object;)Z
+     122: ifeq          133
+     125: aload         11
+     127: checkcast     #27                 // class com/razz/decocraft_nature/models/bbmodel/BBModelParts$Element
+     130: goto          134
+     133: aconst_null
+     134: aload         12
+     136: invokespecial #295                // Method com/razz/decocraft_nature/client/render/AnimatedModelRenderer."<init>":(IILcom/razz/decocraft_nature/models/bbmodel/BBModelParts$Element;Ljava/lang/String;)V
+     139: astore        13
+     141: iconst_3
+     142: newarray       float
+     144: dup
+     145: iconst_0
+     146: fconst_0
+     147: fastore
+     148: dup
+     149: iconst_1
+     150: fconst_0
+     151: fastore
+     152: dup
+     153: iconst_2
+     154: fconst_0
+     155: fastore
+     156: astore        14
+     158: iconst_3
+     159: newarray       float
+     161: dup
+     162: iconst_0
+     163: fconst_0
+     164: fastore
+     165: dup
+     166: iconst_1
+     167: fconst_0
+     168: fastore
+     169: dup
+     170: iconst_2
+     171: fconst_0
+     172: fastore
+     173: astore        15
+     175: aload         8
+     177: aload         11
+     179: getfield      #368                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase.uuid:Ljava/lang/String;
+     182: invokeinterface #339,  2          // InterfaceMethod java/util/Map.get:(Ljava/lang/Object;)Ljava/lang/Object;
+     187: ifnull        298
+     190: aload         8
+     192: aload         11
+     194: getfield      #368                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase.uuid:Ljava/lang/String;
+     197: invokeinterface #339,  2          // InterfaceMethod java/util/Map.get:(Ljava/lang/Object;)Ljava/lang/Object;
+     202: checkcast     #336                // class java/util/Map
+     205: getstatic     #372                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$Channel.ROTATION:Lcom/razz/decocraft_nature/models/bbmodel/BBModelParts$Channel;
+     208: invokeinterface #339,  2          // InterfaceMethod java/util/Map.get:(Ljava/lang/Object;)Ljava/lang/Object;
+     213: ifnull        244
+     216: aload         8
+     218: aload         11
+     220: getfield      #368                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase.uuid:Ljava/lang/String;
+     223: invokeinterface #339,  2          // InterfaceMethod java/util/Map.get:(Ljava/lang/Object;)Ljava/lang/Object;
+     228: checkcast     #336                // class java/util/Map
+     231: getstatic     #372                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$Channel.ROTATION:Lcom/razz/decocraft_nature/models/bbmodel/BBModelParts$Channel;
+     234: invokeinterface #339,  2          // InterfaceMethod java/util/Map.get:(Ljava/lang/Object;)Ljava/lang/Object;
+     239: checkcast     #374                // class "[F"
+     242: astore        14
+     244: aload         8
+     246: aload         11
+     248: getfield      #368                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase.uuid:Ljava/lang/String;
+     251: invokeinterface #339,  2          // InterfaceMethod java/util/Map.get:(Ljava/lang/Object;)Ljava/lang/Object;
+     256: checkcast     #336                // class java/util/Map
+     259: getstatic     #377                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$Channel.POSITION:Lcom/razz/decocraft_nature/models/bbmodel/BBModelParts$Channel;
+     262: invokeinterface #339,  2          // InterfaceMethod java/util/Map.get:(Ljava/lang/Object;)Ljava/lang/Object;
+     267: ifnull        298
+     270: aload         8
+     272: aload         11
+     274: getfield      #368                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase.uuid:Ljava/lang/String;
+     277: invokeinterface #339,  2          // InterfaceMethod java/util/Map.get:(Ljava/lang/Object;)Ljava/lang/Object;
+     282: checkcast     #336                // class java/util/Map
+     285: getstatic     #377                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$Channel.POSITION:Lcom/razz/decocraft_nature/models/bbmodel/BBModelParts$Channel;
+     288: invokeinterface #339,  2          // InterfaceMethod java/util/Map.get:(Ljava/lang/Object;)Ljava/lang/Object;
+     293: checkcast     #374                // class "[F"
+     296: astore        15
+     298: aload         13
+     300: aload         11
+     302: getfield      #381                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase.origin:Lcom/razz/decocraft_nature/models/libgdx/Vector3;
+     305: getfield      #386                // Field com/razz/decocraft_nature/models/libgdx/Vector3.x:F
+     308: aload_3
+     309: getfield      #381                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase.origin:Lcom/razz/decocraft_nature/models/libgdx/Vector3;
+     312: getfield      #386                // Field com/razz/decocraft_nature/models/libgdx/Vector3.x:F
+     315: fsub
+     316: aload         15
+     318: iconst_0
+     319: faload
+     320: fsub
+     321: aload         11
+     323: getfield      #381                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase.origin:Lcom/razz/decocraft_nature/models/libgdx/Vector3;
+     326: getfield      #389                // Field com/razz/decocraft_nature/models/libgdx/Vector3.y:F
+     329: aload_3
+     330: getfield      #381                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase.origin:Lcom/razz/decocraft_nature/models/libgdx/Vector3;
+     333: getfield      #389                // Field com/razz/decocraft_nature/models/libgdx/Vector3.y:F
+     336: fsub
+     337: aload         15
+     339: iconst_1
+     340: faload
+     341: fadd
+     342: aload         11
+     344: getfield      #381                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase.origin:Lcom/razz/decocraft_nature/models/libgdx/Vector3;
+     347: getfield      #392                // Field com/razz/decocraft_nature/models/libgdx/Vector3.z:F
+     350: aload_3
+     351: getfield      #381                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase.origin:Lcom/razz/decocraft_nature/models/libgdx/Vector3;
+     354: getfield      #392                // Field com/razz/decocraft_nature/models/libgdx/Vector3.z:F
+     357: fsub
+     358: aload         15
+     360: iconst_2
+     361: faload
+     362: fadd
+     363: invokevirtual #396                // Method com/razz/decocraft_nature/client/render/AnimatedModelRenderer.m_104227_:(FFF)V
+     366: aload         13
+     368: aload         11
+     370: getfield      #399                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase.rotation:Lcom/razz/decocraft_nature/models/libgdx/Vector3;
+     373: getfield      #386                // Field com/razz/decocraft_nature/models/libgdx/Vector3.x:F
+     376: aload         14
+     378: iconst_0
+     379: faload
+     380: fsub
+     381: putfield      #402                // Field com/razz/decocraft_nature/client/render/AnimatedModelRenderer.f_104203_:F
+     384: aload         13
+     386: aload         11
+     388: getfield      #399                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase.rotation:Lcom/razz/decocraft_nature/models/libgdx/Vector3;
+     391: getfield      #389                // Field com/razz/decocraft_nature/models/libgdx/Vector3.y:F
+     394: aload         14
+     396: iconst_1
+     397: faload
+     398: fsub
+     399: putfield      #405                // Field com/razz/decocraft_nature/client/render/AnimatedModelRenderer.f_104204_:F
+     402: aload         13
+     404: aload         11
+     406: getfield      #399                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase.rotation:Lcom/razz/decocraft_nature/models/libgdx/Vector3;
+     409: getfield      #392                // Field com/razz/decocraft_nature/models/libgdx/Vector3.z:F
+     412: aload         14
+     414: iconst_2
+     415: faload
+     416: fadd
+     417: putfield      #408                // Field com/razz/decocraft_nature/client/render/AnimatedModelRenderer.f_104205_:F
+     420: aload         6
+     422: aload         12
+     424: aload         13
+     426: invokevirtual #412                // Method com/razz/decocraft_nature/client/render/AnimatedModelRenderer.addChild:(Ljava/lang/String;Lnet/minecraft/client/model/geom/ModelPart;)V
+     429: aload         11
+     431: getfield      #357                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase.type:Ljava/lang/String;
+     434: ldc_w         #359                // String cube
+     437: invokestatic  #365                // Method java/util/Objects.equals:(Ljava/lang/Object;Ljava/lang/Object;)Z
+     440: ifeq          561
+     443: aload         11
+     445: checkcast     #27                 // class com/razz/decocraft_nature/models/bbmodel/BBModelParts$Element
+     448: astore        16
+     450: aload         13
+     452: aload         16
+     454: getfield      #415                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$Element.from:Lcom/razz/decocraft_nature/models/libgdx/Vector3;
+     457: getfield      #386                // Field com/razz/decocraft_nature/models/libgdx/Vector3.x:F
+     460: aload         16
+     462: getfield      #416                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$Element.origin:Lcom/razz/decocraft_nature/models/libgdx/Vector3;
+     465: getfield      #386                // Field com/razz/decocraft_nature/models/libgdx/Vector3.x:F
+     468: fsub
+     469: aload         16
+     471: getfield      #415                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$Element.from:Lcom/razz/decocraft_nature/models/libgdx/Vector3;
+     474: getfield      #389                // Field com/razz/decocraft_nature/models/libgdx/Vector3.y:F
+     477: aload         16
+     479: getfield      #416                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$Element.origin:Lcom/razz/decocraft_nature/models/libgdx/Vector3;
+     482: getfield      #389                // Field com/razz/decocraft_nature/models/libgdx/Vector3.y:F
+     485: fsub
+     486: aload         16
+     488: getfield      #415                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$Element.from:Lcom/razz/decocraft_nature/models/libgdx/Vector3;
+     491: getfield      #392                // Field com/razz/decocraft_nature/models/libgdx/Vector3.z:F
+     494: aload         16
+     496: getfield      #416                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$Element.origin:Lcom/razz/decocraft_nature/models/libgdx/Vector3;
+     499: getfield      #392                // Field com/razz/decocraft_nature/models/libgdx/Vector3.z:F
+     502: fsub
+     503: aload         16
+     505: getfield      #419                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$Element.to:Lcom/razz/decocraft_nature/models/libgdx/Vector3;
+     508: getfield      #386                // Field com/razz/decocraft_nature/models/libgdx/Vector3.x:F
+     511: aload         16
+     513: getfield      #415                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$Element.from:Lcom/razz/decocraft_nature/models/libgdx/Vector3;
+     516: getfield      #386                // Field com/razz/decocraft_nature/models/libgdx/Vector3.x:F
+     519: fsub
+     520: aload         16
+     522: getfield      #419                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$Element.to:Lcom/razz/decocraft_nature/models/libgdx/Vector3;
+     525: getfield      #389                // Field com/razz/decocraft_nature/models/libgdx/Vector3.y:F
+     528: aload         16
+     530: getfield      #415                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$Element.from:Lcom/razz/decocraft_nature/models/libgdx/Vector3;
+     533: getfield      #389                // Field com/razz/decocraft_nature/models/libgdx/Vector3.y:F
+     536: fsub
+     537: aload         16
+     539: getfield      #419                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$Element.to:Lcom/razz/decocraft_nature/models/libgdx/Vector3;
+     542: getfield      #392                // Field com/razz/decocraft_nature/models/libgdx/Vector3.z:F
+     545: aload         16
+     547: getfield      #415                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$Element.from:Lcom/razz/decocraft_nature/models/libgdx/Vector3;
+     550: getfield      #392                // Field com/razz/decocraft_nature/models/libgdx/Vector3.z:F
+     553: fsub
+     554: invokevirtual #423                // Method com/razz/decocraft_nature/client/render/AnimatedModelRenderer.addBox:(FFFFFF)Lnet/minecraft/client/model/geom/ModelPart;
+     557: pop
+     558: goto          589
+     561: aload         11
+     563: checkcast     #36                 // class com/razz/decocraft_nature/models/bbmodel/BBModelParts$OutlinerGroup
+     566: astore        16
+     568: aload_0
+     569: iload_1
+     570: iload_2
+     571: aload         11
+     573: aload         16
+     575: getfield      #426                // Field com/razz/decocraft_nature/models/bbmodel/BBModelParts$OutlinerGroup.children:Ljava/util/List;
+     578: aload         5
+     580: aload         13
+     582: aload         12
+     584: aload         8
+     586: invokevirtual #311                // Method parseOutliners:(IILcom/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase;Ljava/util/List;Ljava/util/Map;Lcom/razz/decocraft_nature/client/render/AnimatedModelRenderer;Ljava/lang/String;Ljava/util/Map;)V
+     589: goto          9
+     592: return
+
+  public void m_6922_(net.minecraft.world.level.block.entity.BlockEntity, float, com.mojang.blaze3d.vertex.PoseStack, net.minecraft.client.renderer.MultiBufferSource, int, int);
+    descriptor: (Lnet/minecraft/world/level/block/entity/BlockEntity;FLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;II)V
+    Code:
+       0: aload_0
+       1: aload_1
+       2: checkcast     #70                 // class com/razz/decocraft_nature/common/tileentities/AnimatedTileEntity
+       5: fload_2
+       6: aload_3
+       7: aload         4
+       9: iload         5
+      11: iload         6
+      13: invokevirtual #447                // Method render:(Lcom/razz/decocraft_nature/common/tileentities/AnimatedTileEntity;FLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;II)V
+      16: return
+
+  static {};
+    descriptor: ()V
+    Code:
+       0: new           #450                // class java/util/HashMap
+       3: dup
+       4: invokespecial #451                // Method java/util/HashMap."<init>":()V
+       7: putstatic     #453                // Field CACHE:Ljava/util/Map;
+      10: return
+}

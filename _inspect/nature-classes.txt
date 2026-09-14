@@ -1,0 +1,4 @@
+com/razz/decocraft_nature/client/render/AnimatedModelRenderer$ModelBox.class
+com/razz/decocraft_nature/client/render/AnimatedModelRenderer.class
+com/razz/decocraft_nature/client/render/AnimatedRenderer$1.class
+com/razz/decocraft_nature/client/render/AnimatedRenderer.class
