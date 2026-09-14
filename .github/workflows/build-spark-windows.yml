@@ -24,86 +24,58 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Checkout exact spark 1.10.53 source
+      - name: Download exact stock spark 1.10.53 Forge jar
         shell: bash
         run: |
-          rm -rf .spark-build
-          git clone https://github.com/lucko/spark.git .spark-build
-          cd .spark-build
-          git checkout 8c253aec4db3450dc640c4b66f74f9c8908514fa
-          test "$(git rev-parse HEAD)" = "8c253aec4db3450dc640c4b66f74f9c8908514fa"
-          test "$(git describe --tags)" = "v1.10-53-g8c253ae"
+          set -euo pipefail
+          rm -rf .spark-stock .spark-patch-classes
+          mkdir -p .spark-stock
 
-      - name: Apply Battle Armory Windows JFR allocation backend
+          curl -fsSL 'https://api.modrinth.com/v2/version/4FXHDE9F' -o .spark-stock/version.json
+          URL="$(jq -r '.files[] | select(.filename == "spark-1.10.53-forge.jar") | .url' .spark-stock/version.json)"
+          EXPECTED_SHA512="$(jq -r '.files[] | select(.filename == "spark-1.10.53-forge.jar") | .hashes.sha512' .spark-stock/version.json)"
+          test -n "$URL"
+          test "$URL" != 'null'
+          test -n "$EXPECTED_SHA512"
+          test "$EXPECTED_SHA512" != 'null'
+
+          curl -fL "$URL" -o .spark-stock/spark-1.10.53-forge.jar
+          printf '%s  %s\n' "$EXPECTED_SHA512" '.spark-stock/spark-1.10.53-forge.jar' | sha512sum -c -
+
+          jar tf .spark-stock/spark-1.10.53-forge.jar | grep -q '^META-INF/mods.toml$'
+          jar tf .spark-stock/spark-1.10.53-forge.jar | grep -q '^me/lucko/spark/common/sampler/SamplerBuilder.class$'
+
+      - name: Compile Windows JFR allocation backend against stock jar
         shell: bash
         run: |
-          # Configure only the modules needed for the Forge artifact. The old
-          # spark tree also contains Fabric projects whose historical SNAPSHOT
-          # dependencies are no longer published, and Gradle configures those
-          # projects even when only :spark-forge:build is requested.
-          cat > .spark-build/settings.gradle <<'EOF'
-          pluginManagement {
-              repositories {
-                  maven {
-                      name = 'Forge'
-                      url = 'https://maven.minecraftforge.net/'
-                  }
-                  gradlePluginPortal()
-              }
-          }
+          set -euo pipefail
+          mkdir -p .spark-patch-classes
 
-          rootProject.name = 'spark'
-          include (
-                  'spark-api',
-                  'spark-common',
-                  'spark-forge'
-          )
-          EOF
+          javac --release 17 \
+            -cp .spark-stock/spark-1.10.53-forge.jar \
+            -d .spark-patch-classes \
+            diagnostics/spark-windows/JfrAllocationSampler.java \
+            diagnostics/spark-windows/SamplerBuilder.java
 
-          cp diagnostics/spark-windows/JfrAllocationSampler.java \
-            .spark-build/spark-common/src/main/java/me/lucko/spark/common/sampler/async/JfrAllocationSampler.java
-          cp diagnostics/spark-windows/SamplerBuilder.java \
-            .spark-build/spark-common/src/main/java/me/lucko/spark/common/sampler/SamplerBuilder.java
+          test -f .spark-patch-classes/me/lucko/spark/common/sampler/SamplerBuilder.class
+          test -f .spark-patch-classes/me/lucko/spark/common/sampler/async/JfrAllocationSampler.class
 
-          cat >> .spark-build/spark-common/build.gradle <<'EOF'
-
-          // Battle Armory: Minecraft 1.20.1 runs on Java 17 and the Windows
-          // allocation fallback uses the Java 17 jdk.jfr API.
-          tasks.withType(JavaCompile).configureEach {
-              options.release = 17
-          }
-          EOF
-
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('.spark-build/spark-common/src/main/java/me/lucko/spark/common/command/modules/SamplerModule.java')
-          s = p.read_text()
-          old = 'import me.lucko.spark.common.sampler.async.AsyncSampler;\n'
-          new = old + 'import me.lucko.spark.common.sampler.async.JfrAllocationSampler;\n'
-          if new not in s:
-              if old not in s:
-                  raise SystemExit('SamplerModule import anchor missing')
-              s = s.replace(old, new, 1)
-          old_engine = '(sampler instanceof AsyncSampler ? "async" : "built-in java")'
-          new_engine = '(sampler instanceof AsyncSampler ? "async" : sampler instanceof JfrAllocationSampler ? "windows jfr" : "built-in java")'
-          if new_engine not in s:
-              if old_engine not in s:
-                  raise SystemExit('SamplerModule engine label anchor missing')
-              s = s.replace(old_engine, new_engine, 1)
-          p.write_text(s)
-          PY
-
-      - name: Build Forge 1.20.1 spark
-        working-directory: .spark-build
-        run: ./gradlew :spark-forge:build --stacktrace
-
-      - name: Stage custom jar
+      - name: Patch stock Forge jar
         shell: bash
         run: |
-          SRC=.spark-build/spark-forge/build/libs/spark-1.10.53-forge.jar
-          test -f "$SRC"
+          set -euo pipefail
           mkdir -p payload/mods
-          cp "$SRC" payload/mods/spark-1.10.53-forge-ba-winalloc.jar
+          cp .spark-stock/spark-1.10.53-forge.jar payload/mods/spark-1.10.53-forge-ba-winalloc.jar
+
+          jar uf payload/mods/spark-1.10.53-forge-ba-winalloc.jar \
+            -C .spark-patch-classes me/lucko/spark/common/sampler/SamplerBuilder.class \
+            -C .spark-patch-classes me/lucko/spark/common/sampler/async/JfrAllocationSampler.class
+
+          jar tf payload/mods/spark-1.10.53-forge-ba-winalloc.jar | grep -q '^me/lucko/spark/common/sampler/async/JfrAllocationSampler.class$'
+          javap -classpath payload/mods/spark-1.10.53-forge-ba-winalloc.jar \
+            me.lucko.spark.common.sampler.async.JfrAllocationSampler \
+            | grep -q 'isSupported'
+
           sha256sum payload/mods/spark-1.10.53-forge-ba-winalloc.jar \
             | awk '{print $1}' > payload/mods/spark-1.10.53-forge-ba-winalloc.jar.sha256
           wc -c < payload/mods/spark-1.10.53-forge-ba-winalloc.jar \
@@ -112,6 +84,7 @@ jobs:
       - name: Commit built diagnostic jar
         shell: bash
         run: |
+          set -euo pipefail
           git config user.name 'battle-armory-bot'
           git config user.email 'battle-armory-bot@users.noreply.github.com'
           git add \
