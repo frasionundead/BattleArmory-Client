@@ -25,6 +25,7 @@ jobs:
         run: |
           set -euxo pipefail
           python .github/scripts/patch-decocraft-150.py
+          python .github/scripts/patch-decocraft-150-fields.py
           grep -n 'addQuadsCached' tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
           grep -n 'wholeBakedModels' tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
           grep -n 'whole_model_cache' tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
