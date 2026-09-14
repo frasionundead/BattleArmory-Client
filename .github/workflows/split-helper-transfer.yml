@@ -27,8 +27,17 @@ jobs:
           Path('_transfer/meta.txt').write_text(f'{len(data)}\n{len(s)}\n', encoding='ascii')
           print('chunks', (len(s)+n-1)//n, 'bytes', len(data), 'b64', len(s))
           PY
+      - name: Upload helper artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: battlearmory-decocraft-cache-1.0.0
+          path: payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          retention-days: 1
+      - name: Commit transfer chunks
+        shell: bash
+        run: |
+          set -euxo pipefail
           git config user.name 'battlearmory-bot'
           git config user.email 'battlearmory-bot@users.noreply.github.com'
           git add _transfer
-          git commit -m 'Stage helper transfer chunks'
-          git push
+          git diff --cached --quiet || (git commit -m 'Refresh helper transfer chunks' && git push)
