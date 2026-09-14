@@ -1,0 +1,182 @@
+{
+  "schema": 2,
+  "build": 4,
+  "name": "Battle Armory Client 0004",
+  "minecraft": "1.20.1",
+  "loader": {
+    "type": "forge",
+    "version": "47.4.20"
+  },
+  "state": "staging",
+  "files": [
+    {
+      "path": "mods/customchestmenus-forge-1.20.1-1.7.0.jar",
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/customchestmenus-forge-1.20.1-1.7.0.jar",
+      "size": 128821,
+      "sha256": "c7852587e2510dc4ec144aebdd415295c135b867ecc3ee1a4afbd913ae3a35b3"
+    },
+    {
+      "path": "mods/supplementaries-1.20-3.1.43-forge.jar",
+      "size": 13667742,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/supplementaries-1.20-3.1.43-forge.jar",
+      "sha256": "6132fc23a2fe1da0ca57439b35526ee9a1a8d898397ff8e61b2d08fb951cdf6a"
+    },
+    {
+      "path": "mods/moonlight-1.20-2.16.34-forge.jar",
+      "size": 1419416,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/moonlight-1.20-2.16.34-forge.jar",
+      "sha256": "007c05ae799417ca7aa26669c5d97be9dface5b6fc27aca4ca8031cafe4ddd6e"
+    },
+    {
+      "path": "mods/amendments-1.20-2.2.6.jar",
+      "size": 1315525,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/amendments-1.20-2.2.6.jar",
+      "sha256": "46c7e1276bc77a0843267a6aeee381af61f16bedc7949447fff49eeb7aeb7917"
+    },
+    {
+      "path": "mods/decocraft-3.0.4-1.20.1-slim.jar",
+      "size": 94319937,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/decocraft-3.0.4-1.20.1-slim.jar",
+      "sha256": "2a2554293dea4ea47a95d7b0254d699c3c88ac79ce49c70cbebab829e3c5eeac"
+    },
+    {
+      "path": "mods/decocraft_nature-1.0.4-1.20.1.jar",
+      "size": 18130638,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/decocraft_nature-1.0.4-1.20.1.jar",
+      "sha256": "9b15970236eb7fbcc8a300b6d1425785065a1edf1bd6e8b03a456ef7db81c6c6"
+    },
+    {
+      "path": "mods/CreativeCore_FORGE_v2.12.39_mc1.20.1.jar",
+      "size": 1144128,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/CreativeCore_FORGE_v2.12.39_mc1.20.1.jar",
+      "sha256": "3565ddea132785a044ddfca670610a870c976e52d47a957d0a5f1db78563d046"
+    },
+    {
+      "path": "mods/decorative_blocks-forge-1.20.1-4.1.3.jar",
+      "size": 573928,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/decorative_blocks-forge-1.20.1-4.1.3.jar",
+      "sha256": "19bc47b32258dd703b808f76e7b89da1746ecddaec4ad2bd5eaa356c0d2b3d87"
+    },
+    {
+      "path": "mods/athena-forge-1.20.1-3.1.2.jar",
+      "size": 91808,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/athena-forge-1.20.1-3.1.2.jar",
+      "sha256": "64eec9cffb8847a459536096ac396b135ffb07d13c6a47d9cd7b251276ab"
+    },
+    {
+      "path": "mods/mdm-26.9-forge-1.20.1.jar",
+      "size": 2724644,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/mdm-26.9-forge-1.20.1.jar",
+      "sha256": "99ca75b73b958f8b83868029cfecffcc47106919898ca3216640ecb70ac39d62"
+    },
+    {
+      "path": "mods/props_mod-1.4.1-forge-1.20.1.jar",
+      "size": 682563,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/props_mod-1.4.1-forge-1.20.1.jar",
+      "sha256": "eb0cd97e3b9b37c88774579c8b2e5034e064a9c7dc0692f94f19772dd6bea27c"
+    },
+    {
+      "path": "mods/another_furniture-forge-1.20.1-3.0.4.jar",
+      "size": 2463633,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/another_furniture-forge-1.20.1-3.0.4.jar",
+      "sha256": "421074f4dbb3fd8a5446c03378be70f14bd95feb56b8de7f992b89a5851a8c6d"
+    },
+    {
+      "path": "mods/chipped-forge-1.20.1-3.0.7.jar",
+      "size": 15060263,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/chipped-forge-1.20.1-3.0.7.jar",
+      "sha256": "300e02535342b710fb34409821de9d097b0d8b17f56a57a17d75d05c4c1c5b63"
+    },
+    {
+      "path": "mods/handcrafted-forge-1.20.1-3.0.6.jar",
+      "size": 7111059,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/handcrafted-forge-1.20.1-3.0.6.jar",
+      "sha256": "1da3c7c524bfb656bb370757af55f08f1678e8e1cb934e1c4c04aa773ed64a79"
+    },
+    {
+      "path": "mods/resourcefullib-forge-1.20.1-2.1.29.jar",
+      "size": 432753,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/resourcefullib-forge-1.20.1-2.1.29.jar",
+      "sha256": "b13afb95231d88e1caea5a045967e0fc291b29020b0d26ad39e6f9e9a551fee8"
+    },
+    {
+      "path": "mods/scp_modern-1.20-1.2-pre-beta-b.jar",
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/scp_modern-1.20-1.2-pre-beta-b.jar",
+      "size": 7733765,
+      "sha256": "a0e65a41164263d31c1454edbbf25afa0703eed28a9faced1d338ed42ca42fa8"
+    },
+    {
+      "path": "mods/geckolib-forge-1.20.1-4.8.4.jar",
+      "size": 1038209,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/geckolib-forge-1.20.1-4.8.4.jar",
+      "sha256": "4518779a31b6c2abb92c98b5ad17ef3d60177df68626bfc86c44de2764913c2b"
+    },
+    {
+      "path": "mods/LittleTiles_BETA_v1.6.0-pre161_mc1.20.1.jar",
+      "size": 2623590,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/LittleTiles_BETA_v1.6.0-pre161_mc1.20.1.jar",
+      "sha256": "365cfb137e0f3a95f605b45fea82040afb0ac4fa1a0fc0deaeaf59cb35e8bae4"
+    },
+    {
+      "path": "mods/FramedBlocks-9.4.3.jar",
+      "size": 4251314,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/FramedBlocks-9.4.3.jar",
+      "sha256": "58f4a8d8fb759a9db8754d83461df1b7b2e94426888259286d3acc316e6c6589"
+    },
+    {
+      "path": "mods/GamingDeco+1.8.3+Forge+1.20.1..jar",
+      "size": 5834791,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/GamingDeco+1.8.3+Forge+1.20.1..jar",
+      "sha256": "612dad24ed0741f24b185a59e7cc5812d2a2557146dda17ed1ce42cbabd85952"
+    },
+    {
+      "path": "mods/paladin-furniture-mod-1.5.0-forge-mc1.20.1.jar",
+      "size": 6226086,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/paladin-furniture-mod-1.5.0-forge-mc1.20.1.jar",
+      "sha256": "6d3491f35f3a22fc442014d71ef7b53c24e66bc81c920dba0afcf678f304e48d"
+    },
+    {
+      "path": "mods/mcw-mcwfences-1.2.1-mc1.20.1forge.jar",
+      "size": 708634,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/mcw-mcwfences-1.2.1-mc1.20.1forge.jar",
+      "sha256": "10deb617769e9674a767a3991af4c46afd081b5de42cee326f71ef2700a14313"
+    },
+    {
+      "path": "mods/just_barricades-1.0.0.jar",
+      "size": 45092,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/just_barricades-1.0.0.jar",
+      "sha256": "321fc8844952c82398bff5e6fd42d108f01636af0ff84bc9defd7215e0c97b44"
+    },
+    {
+      "path": "mods/the_last_day-0.8.jar",
+      "size": 98119943,
+      "url": "https://raw.githubusercontent.com/frasionundead/BattleArmory-Client/main/payload/mods/the_last_day-0.8.jar",
+      "sha256": "71641fffbb4e7b30fe854a8441983a01487b143eda3c186de0e12837f1d74562"
+    },
+    {
+      "path": "mods/spark-1.10.53-forge.jar",
+      "source": {
+        "provider": "modrinth",
+        "version_id": "4FXHDE9F",
+        "file_name": "spark-1.10.53-forge.jar"
+      }
+    }
+  ],
+  "components": [
+    {
+      "id": "custom_chest_menus",
+      "status": "READY",
+      "notes": "Required GUI renderer."
+    },
+    {
+      "id": "map_content_pack",
+      "status": "READY",
+      "notes": "Pinned client/server map-content mods required by Office/Ruins/Desert/Hotel."
+    },
+    {
+      "id": "client_profiler",
+      "status": "DIAGNOSTIC",
+      "notes": "spark 1.10.53 Forge client profiler for GC/allocation diagnosis."
+    }
+  ]
+}
