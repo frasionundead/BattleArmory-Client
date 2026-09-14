@@ -40,7 +40,7 @@ jobs:
             'payload/mods/decocraft_nature-1.0.4-1.20.1.jar|com.razz.decocraft_nature.models.bbmodel.BlockbenchBakery'; do
             IFS='|' read -r jar bakery <<< "$spec"
             javap -classpath "$jar" -p -s "$bakery" | grep -A1 'BakedQuad bakeQuad'
-            javap -classpath "$jar" -p -c "$bakery" | grep 'BakedQuad."<init>":([IILnet/minecraft/core/Direction;Lnet/minecraft/client/renderer/texture/TextureAtlasSprite;Z)V'
+            javap -classpath "$jar" -p -c "$bakery" | grep -F 'BakedQuad."<init>":([IILnet/minecraft/core/Direction;Lnet/minecraft/client/renderer/texture/TextureAtlasSprite;Z)V'
           done
 
       - name: Compile and package optimizer
