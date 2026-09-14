@@ -1,0 +1,44 @@
+name: Build Decocraft optimizer 1.2.0 staging
+on:
+  push:
+    paths:
+      - '.github/workflows/build-decocraft-optimizer-120-staging.yml'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Compile and package staging helper
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf build/decocraft120 dist
+          mkdir -p build/decocraft120/classes build/decocraft120/jar/META-INF build/decocraft120/jar/coremods dist
+          javac -source 17 -target 17 \
+            -d build/decocraft120/classes \
+            tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          cp -R build/decocraft120/classes/com build/decocraft120/jar/
+          cp tools/decocraft-cache/META-INF/mods.toml build/decocraft120/jar/META-INF/mods.toml
+          cp tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js build/decocraft120/jar/coremods/
+          OLD=payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          unzip -p "$OLD" META-INF/MANIFEST.MF > build/decocraft120/MANIFEST.MF
+          unzip -p "$OLD" META-INF/coremods.json > build/decocraft120/jar/META-INF/coremods.json
+          unzip -p "$OLD" pack.mcmeta > build/decocraft120/jar/pack.mcmeta
+          unzip -p "$OLD" battlearmory_translucent_materials.txt > build/decocraft120/jar/battlearmory_translucent_materials.txt
+          node --check tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          jar cfm dist/battlearmory-decocraft-cache-1.2.0-staging.jar build/decocraft120/MANIFEST.MF -C build/decocraft120/jar .
+          jar tf dist/battlearmory-decocraft-cache-1.2.0-staging.jar | sort
+          unzip -p dist/battlearmory-decocraft-cache-1.2.0-staging.jar META-INF/mods.toml | grep 'version="1.2.0"'
+          javap -classpath dist/battlearmory-decocraft-cache-1.2.0-staging.jar com.battlearmory.decocraftcache.DecocraftCacheRuntime | grep -E 'getModel|material|Quaternion|renderTypeFunction'
+          sha256sum dist/battlearmory-decocraft-cache-1.2.0-staging.jar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: battlearmory-decocraft-cache-1.2.0-staging
+          path: dist/battlearmory-decocraft-cache-1.2.0-staging.jar
+          retention-days: 1
