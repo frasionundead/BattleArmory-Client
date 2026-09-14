@@ -1,0 +1,175 @@
+name: Publish Decocraft optimizer 1.7.0 rotated quad storage
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-decocraft-optimizer-170.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Restore known-good 1.5.0 source and apply v1.7 patch
+        shell: bash
+        run: |
+          set -euxo pipefail
+          GOOD=09a7f68b464fa42cd597f7b5488fa6c709a04c72
+          git show "$GOOD:tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java" > tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          git show "$GOOD:tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js" > tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          git show "$GOOD:tools/decocraft-cache/META-INF/mods.toml" > tools/decocraft-cache/META-INF/mods.toml
+          python .github/scripts/patch-decocraft-170.py
+          grep -n 'materializeRotatedVertices' tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          grep -n 'rotationBaseVertices' tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          grep -n 'addBakedQuadRotationStorage' tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          grep -n 'version="1.7.0"' tools/decocraft-cache/META-INF/mods.toml
+
+      - name: Verify four-way blockstate topology
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python - <<'PY'
+          import json, zipfile, collections
+          jars = [
+              'payload/mods/decocraft-3.0.4-1.20.1-slim.jar',
+              'payload/mods/decocraft_nature-1.0.4-1.20.1.jar',
+          ]
+          total_refs = 0
+          unusual = []
+          rotations = collections.Counter()
+          for jar in jars:
+              with zipfile.ZipFile(jar) as z:
+                  for name in z.namelist():
+                      if '/blockstates/' not in name or not name.endswith('.json'):
+                          continue
+                      try:
+                          obj = json.loads(z.read(name))
+                      except Exception:
+                          continue
+                      def walk(x):
+                          global total_refs
+                          if isinstance(x, dict):
+                              if isinstance(x.get('model'), str):
+                                  y = int(x.get('y', 0)) % 360
+                                  xr = int(x.get('x', 0)) % 360
+                                  uv = bool(x.get('uvlock', False))
+                                  rotations[y] += 1
+                                  total_refs += 1
+                                  if y not in (0,90,180,270) or xr != 0 or uv:
+                                      unusual.append((name, x.get('model'), xr, y, uv))
+                              for v in x.values(): walk(v)
+                          elif isinstance(x, list):
+                              for v in x: walk(v)
+                      walk(obj)
+          print('refs=', total_refs, 'rotations=', dict(rotations), 'unusual=', len(unusual))
+          if total_refs != 18404:
+              raise SystemExit(f'expected 18404 Decocraft/Nature blockstate refs, got {total_refs}')
+          if unusual:
+              print(unusual[:20])
+              raise SystemExit('unexpected non-Y-quarter-turn or uvlocked blockstate variant')
+          PY
+
+      - name: Compile and package optimizer
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf build/decocraft170 dist
+          mkdir -p build/decocraft170/classes build/decocraft170/jar/META-INF build/decocraft170/jar/coremods dist
+          javac -source 17 -target 17 \
+            -d build/decocraft170/classes \
+            tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java
+          cp -R build/decocraft170/classes/com build/decocraft170/jar/
+          cp tools/decocraft-cache/META-INF/mods.toml build/decocraft170/jar/META-INF/mods.toml
+          cp tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js build/decocraft170/jar/coremods/
+          OLD=payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          unzip -p "$OLD" META-INF/MANIFEST.MF > build/decocraft170/MANIFEST.MF
+          unzip -p "$OLD" META-INF/coremods.json > build/decocraft170/jar/META-INF/coremods.json
+          unzip -p "$OLD" pack.mcmeta > build/decocraft170/jar/pack.mcmeta
+          unzip -p "$OLD" battlearmory_translucent_materials.txt > build/decocraft170/jar/battlearmory_translucent_materials.txt
+          node --check tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js
+          jar cfm dist/battlearmory-decocraft-cache-1.7.0.jar build/decocraft170/MANIFEST.MF -C build/decocraft170/jar .
+
+      - name: Static verification
+        shell: bash
+        run: |
+          set -euxo pipefail
+          JAR=dist/battlearmory-decocraft-cache-1.7.0.jar
+          test -s "$JAR"
+          jar tf "$JAR" | grep -q '^META-INF/coremods.json$'
+          jar tf "$JAR" | grep -q '^coremods/battlearmory_decocraft_cache.js$'
+          javap -classpath "$JAR" com.battlearmory.decocraftcache.DecocraftCacheRuntime | grep -q 'materializeRotatedVertices'
+          unzip -p "$JAR" META-INF/mods.toml | grep -q 'version="1.7.0"'
+          unzip -p "$JAR" coremods/battlearmory_decocraft_cache.js | grep -q 'ba\$compress'
+          unzip -p "$JAR" coremods/battlearmory_decocraft_cache.js | grep -q 'ba\$materialized'
+          unzip -p "$JAR" coremods/battlearmory_decocraft_cache.js | grep -q 'addWholeModelCache'
+          sha256sum "$JAR"
+          wc -c < "$JAR"
+
+      - name: Publish payload and build 0017
+        shell: bash
+        run: |
+          set -euxo pipefail
+          JAR=dist/battlearmory-decocraft-cache-1.7.0.jar
+          DEST=payload/mods/battlearmory-decocraft-cache-1.0.0.jar
+          SHA="$(sha256sum "$JAR" | awk '{print $1}')"
+          SIZE="$(wc -c < "$JAR" | tr -d '[:space:]')"
+          cp "$JAR" "$DEST"
+          printf '%s\n' "$SHA" > "$DEST.sha256"
+          printf '%s\n' "$SIZE" > "$DEST.size"
+
+          SHA="$SHA" SIZE="$SIZE" python - <<'PY'
+          import json, os
+          from pathlib import Path
+          old = json.loads(Path('builds/0016.json').read_text(encoding='utf-8'))
+          old['build'] = 17
+          old['name'] = 'Battle Armory Client 0017'
+          old['state'] = 'staging'
+          found = False
+          for f in old.get('files', []):
+              if f.get('path') == 'mods/battlearmory-decocraft-cache-1.0.0.jar':
+                  f['size'] = int(os.environ['SIZE'])
+                  f['sha256'] = os.environ['SHA']
+                  found = True
+          if not found:
+              raise SystemExit('helper entry missing from build 0016')
+          for c in old.get('components', []):
+              if c.get('id') == 'decocraft_render_cache':
+                  c['notes'] = ('v1.7.0 client optimizer: keeps the known-good v1.5 renderer/model caches and preserves every '
+                                'Decocraft/Nature baked model. Four-way blockstate rotations now retain one shared 32-int vertex '
+                                'payload per source face; rotated variants keep their own BakedQuad direction/sprite/tint metadata '
+                                'and lazily materialize the rotated int[] only if that variant is actually consumed by the chunk '
+                                'renderer. Compression is applied only after the stock baked payload is proven to be a pure Y '
+                                'quarter-turn plus vertex permutation; unmatched quads stay stock. Cache clearing on resource reload '
+                                'remains enabled. Diagnostics: battlearmory-rotation-compression-stats.txt.')
+          Path('builds/0017.json').write_text(json.dumps(old, indent=2) + '\n', encoding='utf-8')
+          stable = json.loads(Path('stable.json').read_text(encoding='utf-8'))
+          stable['build'] = 17
+          stable['build_manifest'] = 'builds/0017.json'
+          stable['status'] = 'staging'
+          Path('stable.json').write_text(json.dumps(stable, indent=2) + '\n', encoding='utf-8')
+          PY
+
+          python -m json.tool builds/0017.json >/dev/null
+          python -m json.tool stable.json >/dev/null
+          git config user.name 'battlearmory-bot'
+          git config user.email 'battlearmory-bot@users.noreply.github.com'
+          git add \
+            tools/decocraft-cache/src/com/battlearmory/decocraftcache/DecocraftCacheRuntime.java \
+            tools/decocraft-cache/coremods/battlearmory_decocraft_cache.js \
+            tools/decocraft-cache/META-INF/mods.toml \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar.sha256 \
+            payload/mods/battlearmory-decocraft-cache-1.0.0.jar.size \
+            builds/0017.json stable.json
+          git commit -m 'Publish Decocraft rotated quad storage optimizer 1.7.0 as build 0017'
+          git push
