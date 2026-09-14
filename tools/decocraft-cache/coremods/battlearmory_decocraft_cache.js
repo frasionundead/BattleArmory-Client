@@ -9,6 +9,8 @@ var VarInsnNode = Java.type('org.objectweb.asm.tree.VarInsnNode');
 var TypeInsnNode = Java.type('org.objectweb.asm.tree.TypeInsnNode');
 var FieldInsnNode = Java.type('org.objectweb.asm.tree.FieldInsnNode');
 var MethodInsnNode = Java.type('org.objectweb.asm.tree.MethodInsnNode');
+var JumpInsnNode = Java.type('org.objectweb.asm.tree.JumpInsnNode');
+var LabelNode = Java.type('org.objectweb.asm.tree.LabelNode');
 
 var HELPER = 'com/battlearmory/decocraftcache/DecocraftCacheRuntime';
 var MP = 'net/minecraft/client/model/geom/ModelPart';
@@ -26,6 +28,10 @@ var FAMILIES = [
         base: 'com/razz/decocraft/models/bbmodel/BBModelParts$ElementBase',
         block: 'com/razz/decocraft/common/blocks/DecocraftBlock',
         entry: 'com/razz/decocraft/common/JsonContainer$Entry',
+        jsonParser: 'com/razz/decocraft/utils/JsonParser',
+        bbmodel: 'com/razz/decocraft/models/bbmodel/BBModel',
+        geometryLoader: 'com/razz/decocraft/models/bbmodel/BlockbenchLoader',
+        bbModelLoader: 'com/razz/decocraft/models/bbmodel/BBModelLoader',
         parseDesc: '(Lcom/razz/decocraft/common/JsonContainer$Entry;Lcom/razz/decocraft/models/bbmodel/BBModel;Lcom/razz/decocraft/common/tileentities/AnimatedTileEntity;)Lnet/minecraft/client/model/geom/ModelPart;'
     },
     {
@@ -36,6 +42,10 @@ var FAMILIES = [
         base: 'com/razz/decocraft_nature/models/bbmodel/BBModelParts$ElementBase',
         block: 'com/razz/decocraft_nature/common/blocks/DecocraftBlock',
         entry: 'com/razz/decocraft_nature/common/JsonContainer$Entry',
+        jsonParser: 'com/razz/decocraft_nature/utils/JsonParser',
+        bbmodel: 'com/razz/decocraft_nature/models/bbmodel/BBModel',
+        geometryLoader: 'com/razz/decocraft_nature/models/bbmodel/BlockbenchLoader',
+        bbModelLoader: 'com/razz/decocraft_nature/models/bbmodel/BBModelLoader',
         parseDesc: '(Lcom/razz/decocraft_nature/common/JsonContainer$Entry;Lcom/razz/decocraft_nature/models/bbmodel/BBModel;Lcom/razz/decocraft_nature/common/tileentities/AnimatedTileEntity;)Lnet/minecraft/client/model/geom/ModelPart;'
     }
 ];
@@ -270,9 +280,126 @@ function addFamily(result, f) {
     };
 }
 
+
+function addMemoryDedupe(result, f) {
+    result['battlearmory_' + f.id + '_registry_bbmodel_dedupe'] = {
+        target: { type: 'CLASS', name: dotted(f.jsonParser) },
+        transformer: function(classNode) {
+            var methods = classNode.methods.iterator();
+            var method = null;
+            var wanted = '(Ljava/lang/String;Ljava/util/zip/ZipFile;)L' + f.bbmodel + ';';
+            while (methods.hasNext()) {
+                var candidate = methods.next();
+                if (candidate.name === 'parseModel' && candidate.desc === wanted) {
+                    method = candidate;
+                    break;
+                }
+            }
+            if (method === null) throw 'Battle Armory ' + f.id + ' memory dedupe: JsonParser.parseModel not found';
+
+            var returns = [];
+            var scan = method.instructions.getFirst();
+            while (scan !== null) {
+                if (scan.getOpcode() === Opcodes.ARETURN) returns.push(scan);
+                scan = scan.getNext();
+            }
+
+            var miss = new LabelNode();
+            var entry = new InsnList();
+            entry.add(new LdcInsnNode(f.id));
+            entry.add(new VarInsnNode(Opcodes.ALOAD, 0));
+            entry.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC, HELPER, 'parsedRegistryModelGet',
+                '(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;', false));
+            entry.add(new InsnNode(Opcodes.DUP));
+            entry.add(new JumpInsnNode(Opcodes.IFNULL, miss));
+            entry.add(new TypeInsnNode(Opcodes.CHECKCAST, f.bbmodel));
+            entry.add(new InsnNode(Opcodes.ARETURN));
+            entry.add(miss);
+            entry.add(new InsnNode(Opcodes.POP));
+            method.instructions.insertBefore(method.instructions.getFirst(), entry);
+
+            for (var i = 0; i < returns.length; i++) {
+                var hook = new InsnList();
+                hook.add(new LdcInsnNode(f.id));
+                hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                hook.add(new MethodInsnNode(
+                    Opcodes.INVOKESTATIC, HELPER, 'parsedRegistryModelPut',
+                    '(Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;', false));
+                hook.add(new TypeInsnNode(Opcodes.CHECKCAST, f.bbmodel));
+                method.instructions.insertBefore(returns[i], hook);
+            }
+            method.maxStack = Math.max(method.maxStack, 3);
+            return classNode;
+        }
+    };
+
+    result['battlearmory_' + f.id + '_resource_bbmodel_dedupe'] = {
+        target: { type: 'CLASS', name: dotted(f.geometryLoader) },
+        transformer: function(classNode) {
+            var methods = classNode.methods.iterator();
+            var method = null;
+            var modelClass = f.geometryLoader.substring(0, f.geometryLoader.lastIndexOf('/') + 1) + 'BlockbenchModel';
+            var wanted = '(Lcom/google/gson/JsonObject;Lcom/google/gson/JsonDeserializationContext;)L' + modelClass + ';';
+            while (methods.hasNext()) {
+                var candidate = methods.next();
+                if (candidate.name === 'read' && candidate.desc === wanted) {
+                    method = candidate;
+                    break;
+                }
+            }
+            if (method === null) throw 'Battle Armory ' + f.id + ' memory dedupe: concrete BlockbenchLoader.read not found';
+
+            var modelVar = -1;
+            var loadCall = null;
+            var readerVar = -1;
+            var scan = method.instructions.getFirst();
+            while (scan !== null) {
+                if (scan.getOpcode() === Opcodes.INVOKEVIRTUAL &&
+                    scan.owner === 'com/google/gson/JsonElement' && scan.name === 'getAsString') {
+                    var store = nextReal(scan);
+                    if (store !== null && store.getOpcode() === Opcodes.ASTORE && modelVar < 0) modelVar = store.var;
+                }
+                if (scan.getOpcode() === Opcodes.INVOKEVIRTUAL && scan.owner === f.bbModelLoader &&
+                    scan.name === 'loadModel' && scan.desc === '(Ljava/io/Reader;)L' + f.bbmodel + ';') {
+                    loadCall = scan;
+                    var readerLoad = previousReal(scan);
+                    if (readerLoad !== null && readerLoad.getOpcode() === Opcodes.ALOAD) readerVar = readerLoad.var;
+                }
+                scan = scan.getNext();
+            }
+            if (modelVar < 0 || loadCall === null || readerVar < 0) {
+                throw 'Battle Armory ' + f.id + ' memory dedupe: resource parse locals/call not found';
+            }
+
+            var start = previousReal(loadCall);
+            while (start !== null && !(start.getOpcode() === Opcodes.NEW && start.desc === f.bbModelLoader)) {
+                start = previousReal(start);
+            }
+            if (start === null) throw 'Battle Armory ' + f.id + ' memory dedupe: BBModelLoader allocation not found';
+
+            var replacement = new InsnList();
+            replacement.add(new LdcInsnNode(f.id));
+            replacement.add(new VarInsnNode(Opcodes.ALOAD, modelVar));
+            replacement.add(new VarInsnNode(Opcodes.ALOAD, readerVar));
+            replacement.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC, HELPER, 'sharedResourceModel',
+                '(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;', false));
+            replacement.add(new TypeInsnNode(Opcodes.CHECKCAST, f.bbmodel));
+            method.instructions.insertBefore(start, replacement);
+            removeRange(method.instructions, start, loadCall);
+            method.maxStack = Math.max(method.maxStack, 3);
+            return classNode;
+        }
+    };
+}
+
 function initializeCoreMod() {
     var result = {};
-    for (var i = 0; i < FAMILIES.length; i++) addFamily(result, FAMILIES[i]);
+    for (var i = 0; i < FAMILIES.length; i++) {
+        addFamily(result, FAMILIES[i]);
+        addMemoryDedupe(result, FAMILIES[i]);
+    }
 
     // F3+T / resource-pack reload can temporarily coexist with the old model graph.
     // Clear Battle Armory's strong geometry/material references before Minecraft begins

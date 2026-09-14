@@ -18,6 +18,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 public final class DecocraftCacheRuntime {
@@ -64,14 +65,82 @@ public final class DecocraftCacheRuntime {
     public static void clearForResourceReload() {
         int models = 0;
         int materials = 0;
+        int resourceModels = 0;
         for (FamilyState state : FAMILIES.values()) {
             models += state.modelCache.size();
             materials += state.materialCache.size();
+            resourceModels += state.resourceParsedModels.size();
             state.modelCache.clear();
             state.nodesByModel.clear();
             state.materialCache.clear();
+            state.resourceParsedModels.clear();
         }
-        System.out.println("[BattleArmory] Resource reload: cleared Decocraft caches (models=" + models + ", materials=" + materials + ").");
+        System.out.println("[BattleArmory] Resource reload: cleared Decocraft caches (models=" + models + ", materials=" + materials + ", resourceModels=" + resourceModels + ").");
+    }
+
+    /** Session-stable BBModels parsed from the immutable mod jar, keyed by jar path. */
+    public static Object parsedRegistryModelGet(String family, String path) {
+        FamilyState state = FAMILIES.get(family);
+        if (state == null || path == null) return null;
+        return state.registryParsedModels.get(path);
+    }
+
+    /** Publish one canonical registry BBModel for every unique .bbmodel path. */
+    public static Object parsedRegistryModelPut(Object model, String family, String path) {
+        if (model == null || path == null) return model;
+        FamilyState state = FAMILIES.get(family);
+        if (state == null) return model;
+        Object prior = state.registryParsedModels.putIfAbsent(path, model);
+        return prior != null ? prior : model;
+    }
+
+    /**
+     * Resource-pack model loading used to parse the same .bbmodel once for every
+     * Decocraft block/model JSON that referenced it. Parse each resource location
+     * once per reload and share the immutable BBModel graph between BlockbenchModels.
+     */
+    public static Object sharedResourceModel(String family, String modelKey, Object reader) {
+        if (modelKey == null || reader == null) throw new IllegalArgumentException("modelKey/reader");
+        FamilyState state = FAMILIES.get(family);
+        if (state == null) throw new IllegalArgumentException("Unknown Decocraft family: " + family);
+
+        Object cached = state.resourceParsedModels.get(modelKey);
+        if (cached != null) {
+            closeQuietly(reader);
+            return cached;
+        }
+
+        try {
+            ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+            if (classLoader == null) classLoader = DecocraftCacheRuntime.class.getClassLoader();
+            String loaderName = family.equals("decocraft_nature")
+                    ? "com.razz.decocraft_nature.models.bbmodel.BBModelLoader"
+                    : "com.razz.decocraft.models.bbmodel.BBModelLoader";
+            Class<?> loaderClass = Class.forName(loaderName, false, classLoader);
+            Object loader = loaderClass.getConstructor().newInstance();
+            Method loadModel = loaderClass.getMethod("loadModel", java.io.Reader.class);
+            Object parsed;
+            try {
+                parsed = loadModel.invoke(loader, reader);
+            } catch (InvocationTargetException e) {
+                Throwable cause = e.getCause() != null ? e.getCause() : e;
+                throw cause;
+            }
+            if (parsed == null) throw new IllegalStateException("BBModelLoader returned null for " + modelKey);
+            Object prior = state.resourceParsedModels.putIfAbsent(modelKey, parsed);
+            return prior != null ? prior : parsed;
+        } catch (Throwable t) {
+            throw new RuntimeException("Battle Armory shared BBModel load failed for " + family + ":" + modelKey, t);
+        } finally {
+            closeQuietly(reader);
+        }
+    }
+
+    private static void closeQuietly(Object object) {
+        if (!(object instanceof AutoCloseable)) return;
+        try {
+            ((AutoCloseable) object).close();
+        } catch (Exception ignored) {}
     }
 
     public static Object getModel(Object renderer, Object meta, Object model, Object tileEntity) {
@@ -493,6 +562,8 @@ public final class DecocraftCacheRuntime {
         final IdentityHashMap<Object, Object> modelCache = new IdentityHashMap<>();
         final IdentityHashMap<Object, NodeState[]> nodesByModel = new IdentityHashMap<>();
         final Map<String, Object> materialCache = new HashMap<>();
+        final ConcurrentHashMap<String, Object> registryParsedModels = new ConcurrentHashMap<>();
+        final ConcurrentHashMap<String, Object> resourceParsedModels = new ConcurrentHashMap<>();
         final Set<String> translucentMaterials = new HashSet<>();
         volatile boolean initialized;
         volatile boolean disabled;
