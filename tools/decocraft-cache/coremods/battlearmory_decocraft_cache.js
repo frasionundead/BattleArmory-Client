@@ -13,6 +13,9 @@ var MethodInsnNode = Java.type('org.objectweb.asm.tree.MethodInsnNode');
 var HELPER = 'com/battlearmory/decocraftcache/DecocraftCacheRuntime';
 var MP = 'net/minecraft/client/model/geom/ModelPart';
 var MATERIAL = 'net/minecraft/client/resources/model/Material';
+var POSESTACK = 'com/mojang/blaze3d/vertex/PoseStack';
+var QUAT = 'org/joml/Quaternionf';
+var DIRECTION = 'net/minecraft/core/Direction';
 
 var FAMILIES = [
     {
@@ -47,6 +50,22 @@ function nextReal(insn) {
     return n;
 }
 
+function previousReal(insn) {
+    var n = insn === null ? null : insn.getPrevious();
+    while (n !== null && n.getOpcode() < 0) n = n.getPrevious();
+    return n;
+}
+
+function removeRange(instructions, first, last) {
+    var cur = first;
+    while (cur !== null) {
+        var next = cur.getNext();
+        instructions.remove(cur);
+        if (cur === last) break;
+        cur = next;
+    }
+}
+
 function addFamily(result, f) {
     result['battlearmory_' + f.id + '_animated_model'] = {
         target: { type: 'CLASS', name: dotted(f.amr) },
@@ -79,8 +98,8 @@ function addFamily(result, f) {
 
             original.name = 'ba$buildModel';
 
-            // Preserve each model node UUID so the cached static geometry can receive
-            // the current block entity's dynamic keyframe transforms every frame.
+            // Preserve each node UUID once. Runtime flattens this tree after the
+            // first build so later animation updates no longer allocate iterators.
             var injectedUuid = false;
             var insn = parseOutliners.instructions.getFirst();
             while (insn !== null) {
@@ -89,7 +108,6 @@ function addFamily(result, f) {
                     if (store !== null && store.getOpcode() === Opcodes.ASTORE) {
                         var uuidCode = new InsnList();
                         uuidCode.add(new VarInsnNode(Opcodes.ALOAD, store.var));
-                        // In both pinned 3.0.4 renderers local 11 is ElementBase.
                         uuidCode.add(new VarInsnNode(Opcodes.ALOAD, 11));
                         uuidCode.add(new FieldInsnNode(Opcodes.GETFIELD, f.base, 'uuid', 'Ljava/lang/String;'));
                         uuidCode.add(new FieldInsnNode(Opcodes.PUTFIELD, f.amr, 'ba$uuid', 'Ljava/lang/String;'));
@@ -120,24 +138,58 @@ function addFamily(result, f) {
             wrapper.maxLocals = 4;
             classNode.methods.add(wrapper);
 
-            // Discover the local holding DecocraftBlock rather than hard-coding it.
             var blockVar = -1;
+            var facingVar = -1;
             insn = render.instructions.getFirst();
             while (insn !== null) {
                 if (insn.getOpcode() === Opcodes.CHECKCAST && insn.desc === f.block) {
                     var blockStore = nextReal(insn);
-                    if (blockStore !== null && blockStore.getOpcode() === Opcodes.ASTORE) {
-                        blockVar = blockStore.var;
-                        break;
-                    }
+                    if (blockStore !== null && blockStore.getOpcode() === Opcodes.ASTORE) blockVar = blockStore.var;
+                }
+                if (insn.getOpcode() === Opcodes.CHECKCAST && insn.desc === DIRECTION) {
+                    var facingStore = nextReal(insn);
+                    if (facingStore !== null && facingStore.getOpcode() === Opcodes.ASTORE) facingVar = facingStore.var;
                 }
                 insn = insn.getNext();
             }
             if (blockVar < 0) throw 'Battle Armory ' + f.id + ' cache: block local was not found';
+            if (facingVar < 0) throw 'Battle Armory ' + f.id + ' cache: facing local was not found';
 
-            // Replace RenderType::entityTranslucent function with a selector. The helper
-            // keeps partial-alpha materials translucent and moves binary-alpha/opaque
-            // materials to entityCutoutNoCull, avoiding unnecessary translucent sorting.
+            // Replace per-block-entity new Material(new ResourceLocation(...)) with
+            // a material cache keyed by the immutable Decocraft metadata string.
+            var materialNew = null;
+            var materialCtor = null;
+            insn = render.instructions.getFirst();
+            while (insn !== null) {
+                if (materialNew === null && insn.getOpcode() === Opcodes.NEW && insn.desc === MATERIAL) {
+                    materialNew = insn;
+                } else if (materialNew !== null && insn.getOpcode() === Opcodes.INVOKESPECIAL && insn.owner === MATERIAL && insn.name === '<init>') {
+                    materialCtor = insn;
+                    break;
+                }
+                insn = insn.getNext();
+            }
+            if (materialNew === null || materialCtor === null) {
+                throw 'Battle Armory ' + f.id + ' cache: Material allocation sequence was not found';
+            }
+            var materialCode = new InsnList();
+            materialCode.add(new LdcInsnNode(f.ns));
+            materialCode.add(new VarInsnNode(Opcodes.ALOAD, blockVar));
+            materialCode.add(new FieldInsnNode(Opcodes.GETFIELD, f.block, 'meta', 'L' + f.entry + ';'));
+            materialCode.add(new FieldInsnNode(Opcodes.GETFIELD, f.entry, 'material', 'Ljava/lang/String;'));
+            materialCode.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                HELPER,
+                'material',
+                '(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;',
+                false
+            ));
+            materialCode.add(new TypeInsnNode(Opcodes.CHECKCAST, MATERIAL));
+            render.instructions.insertBefore(materialNew, materialCode);
+            removeRange(render.instructions, materialNew, materialCtor);
+
+            // Preserve partial-alpha rendering, but avoid sorting for binary-alpha
+            // textures. Runtime returns one of two static Function singletons.
             var replacedRenderType = false;
             insn = render.instructions.getFirst();
             while (insn !== null) {
@@ -166,6 +218,52 @@ function addFamily(result, f) {
                 break;
             }
             if (!replacedRenderType) throw 'Battle Armory ' + f.id + ' cache: render-type function injection point was not found';
+
+            // Decocraft used to allocate three AxisAngle4f + three Quaternionf for
+            // every animated block entity on every frame. Replace those constructions
+            // with immutable cached quaternions while keeping the same three mulPose calls.
+            var rotations = [];
+            insn = render.instructions.getFirst();
+            while (insn !== null) {
+                if (insn.getOpcode() === Opcodes.INVOKEVIRTUAL && insn.owner === POSESTACK &&
+                    insn.desc === '(L' + QUAT + ';)V') {
+                    rotations.push(insn);
+                }
+                insn = insn.getNext();
+            }
+            if (rotations.length !== 3) {
+                throw 'Battle Armory ' + f.id + ' cache: expected exactly three quaternion pose calls, got ' + rotations.length;
+            }
+
+            var pushCall = previousReal(rotations[0]);
+            while (pushCall !== null && !(pushCall.getOpcode() === Opcodes.INVOKEVIRTUAL && pushCall.owner === POSESTACK && pushCall.desc === '()V')) {
+                pushCall = previousReal(pushCall);
+            }
+            if (pushCall === null) throw 'Battle Armory ' + f.id + ' cache: pushPose call was not found';
+
+            for (var i = 2; i >= 0; i--) {
+                var previousCall = i === 0 ? pushCall : rotations[i - 1];
+                var start = nextReal(previousCall);
+                var end = rotations[i];
+                if (start === null || start.getOpcode() !== Opcodes.ALOAD) {
+                    throw 'Battle Armory ' + f.id + ' cache: quaternion receiver load was not found';
+                }
+                var poseVar = start.var;
+                var qcode = new InsnList();
+                qcode.add(new VarInsnNode(Opcodes.ALOAD, poseVar));
+                if (i === 0) {
+                    qcode.add(new VarInsnNode(Opcodes.ALOAD, facingVar));
+                    qcode.add(new MethodInsnNode(Opcodes.INVOKESTATIC, HELPER, 'facingQuaternion', '(Ljava/lang/Object;)Ljava/lang/Object;', false));
+                } else if (i === 1) {
+                    qcode.add(new MethodInsnNode(Opcodes.INVOKESTATIC, HELPER, 'x180Quaternion', '()Ljava/lang/Object;', false));
+                } else {
+                    qcode.add(new MethodInsnNode(Opcodes.INVOKESTATIC, HELPER, 'z180Quaternion', '()Ljava/lang/Object;', false));
+                }
+                qcode.add(new TypeInsnNode(Opcodes.CHECKCAST, QUAT));
+                qcode.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, POSESTACK, end.name, end.desc, false));
+                render.instructions.insertBefore(start, qcode);
+                removeRange(render.instructions, start, end);
+            }
 
             return classNode;
         }
