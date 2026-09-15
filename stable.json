@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "channel": "stable",
-  "build": 21,
-  "build_manifest": "builds/0021.json",
+  "build": 22,
+  "build_manifest": "builds/0022.json",
   "minimum_launcher_version": "0.1.10",
   "minecraft": "1.20.1",
   "loader": "forge",
